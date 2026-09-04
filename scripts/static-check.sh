@@ -34,6 +34,14 @@ grep -q 'test_target' src-tauri/src/main.rs
 grep -q 'notify_recovery' src-tauri/src/main.rs
 grep -q 'generation: AtomicU64' src-tauri/src/main.rs
 
+grep -q 'scheduler_notify: Notify' src-tauri/src/main.rs
+grep -q 'next_probe_delay' src-tauri/src/main.rs
+grep -q 'tokio::select!' src-tauri/src/main.rs
+grep -q '"sync"' src-tauri/Cargo.toml
+! grep -q 'SCHEDULER_TICK_MS' src-tauri/src/main.rs
+! grep -q 'sleep(Duration::from_millis(250))' src-tauri/src/main.rs
+grep -q 'target-update.*table' frontend/settings.js
+
 for icon in \
   src-tauri/icons/icon.png \
   src-tauri/icons/32x32.png \
@@ -82,4 +90,3 @@ test -x script/build_and_run.sh
 test -f .codex/environments/environment.toml
 
 echo "Static checks passed."
-
