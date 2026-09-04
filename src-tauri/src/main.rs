@@ -19,12 +19,14 @@ use tauri::{
 use tauri_plugin_autostart::{MacosLauncher, ManagerExt};
 use tauri_plugin_notification::NotificationExt;
 use tauri_plugin_window_state::StateFlags;
-use tokio::net::{lookup_host, TcpStream};
+use tokio::{
+    net::{lookup_host, TcpStream},
+    sync::Notify,
+};
 
 const TRAY_ID: &str = "latency-tray";
 const HISTORY_WINDOW_MS: u128 = 60_000;
 const MAX_HISTORY_POINTS: usize = 600;
-const SCHEDULER_TICK_MS: u64 = 100;
 
 fn default_true() -> bool {
     true
@@ -279,6 +281,7 @@ struct SharedState {
     runtimes: Mutex<HashMap<String, TargetRuntime>>,
     inflight: Mutex<HashMap<String, u64>>,
     generation: AtomicU64,
+    scheduler_notify: Notify,
 }
 
 impl SharedState {
@@ -293,6 +296,7 @@ impl SharedState {
             runtimes: Mutex::new(runtimes),
             inflight: Mutex::new(HashMap::new()),
             generation: AtomicU64::new(1),
+            scheduler_notify: Notify::new(),
         }
     }
 
@@ -646,7 +650,7 @@ fn stats(samples: &VecDeque<Sample>) -> (Option<f64>, Option<f64>, Option<f64>, 
         return (None, None, None, None, None, 0.0, 0);
     }
 
-    let successful: Vec<f64> = samples.iter().filter_map(|sample| sample.latency_ms).collect();
+    let mut successful: Vec<f64> = samples.iter().filter_map(|sample| sample.latency_ms).collect();
     let failures = samples.len().saturating_sub(successful.len());
     let failure_percent = failures as f64 / samples.len() as f64 * 100.0;
 
@@ -663,16 +667,17 @@ fn stats(samples: &VecDeque<Sample>) -> (Option<f64>, Option<f64>, Option<f64>, 
         .fold(f64::NEG_INFINITY, f64::max);
 
     let jitter = if successful.len() >= 2 {
-        let diffs: Vec<f64> = successful.windows(2).map(|w| (w[1] - w[0]).abs()).collect();
-        Some(diffs.iter().sum::<f64>() / diffs.len() as f64)
+        let jitter_sum: f64 = successful.windows(2).map(|w| (w[1] - w[0]).abs()).sum();
+        Some(jitter_sum / (successful.len() - 1) as f64)
     } else {
         None
     };
 
-    let mut sorted = successful.clone();
-    sorted.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
-    let index = (((sorted.len() as f64) * 0.95).ceil() as usize).saturating_sub(1).min(sorted.len() - 1);
-    let p95 = Some(sorted[index]);
+    successful.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+    let index = (((successful.len() as f64) * 0.95).ceil() as usize)
+        .saturating_sub(1)
+        .min(successful.len() - 1);
+    let p95 = Some(successful[index]);
 
     (Some(average), Some(min), Some(max), jitter, p95, failure_percent, samples.len())
 }
@@ -913,8 +918,15 @@ fn complete_probe(
     (runtime.snapshot.clone(), alert)
 }
 
-fn should_schedule_probe(state: &SharedState, target: &TargetConfig, now: Instant) -> bool {
+fn claim_probe(state: &SharedState, target: &TargetConfig, now: Instant, generation: u64) -> bool {
     if !target.enabled {
+        return false;
+    }
+
+    let Ok(mut inflight) = state.inflight.lock() else {
+        return false;
+    };
+    if inflight.get(&target.id).copied() == Some(generation) {
         return false;
     }
 
@@ -927,53 +939,64 @@ fn should_schedule_probe(state: &SharedState, target: &TargetConfig, now: Instan
 
     let due = runtime
         .last_probe_started
-        .map(|started| now.duration_since(started) >= Duration::from_millis(target.interval_ms))
+        .map(|started| now.saturating_duration_since(started) >= Duration::from_millis(target.interval_ms))
         .unwrap_or(true);
-    if due {
-        runtime.last_probe_started = Some(now);
+    if !due {
+        return false;
     }
-    due
+
+    runtime.last_probe_started = Some(now);
+    inflight.insert(target.id.clone(), generation);
+    true
 }
 
-fn mark_inflight(state: &SharedState, target_id: &str, generation: u64) -> bool {
-    let Ok(mut inflight) = state.inflight.lock() else {
-        return false;
-    };
-    match inflight.get(target_id) {
-        Some(current) if *current == generation => false,
-        _ => {
-            inflight.insert(target_id.to_string(), generation);
-            true
-        }
-    }
+fn next_probe_delay(
+    state: &SharedState,
+    config: &AppConfig,
+    now: Instant,
+    generation: u64,
+) -> Option<Duration> {
+    let inflight = state.inflight.lock().ok()?;
+    let runtimes = state.runtimes.lock().ok()?;
+
+    config
+        .targets
+        .iter()
+        .filter(|target| target.enabled)
+        .filter(|target| inflight.get(&target.id).copied() != Some(generation))
+        .map(|target| {
+            let interval = Duration::from_millis(target.interval_ms);
+            runtimes
+                .get(&target.id)
+                .and_then(|runtime| runtime.last_probe_started)
+                .map(|started| interval.saturating_sub(now.saturating_duration_since(started)))
+                .unwrap_or(Duration::ZERO)
+        })
+        .min()
 }
 
 fn clear_inflight(state: &SharedState, target_id: &str, generation: u64) {
-    if let Ok(mut inflight) = state.inflight.lock() {
+    let cleared = if let Ok(mut inflight) = state.inflight.lock() {
         if inflight.get(target_id).copied() == Some(generation) {
             inflight.remove(target_id);
+            true
+        } else {
+            false
         }
+    } else {
+        false
+    };
+
+    if cleared {
+        state.scheduler_notify.notify_one();
     }
 }
 
 async fn probe_scheduler(app: AppHandle, state: Arc<SharedState>) {
-    let mut last_paused = false;
-
     loop {
-        let paused = state.paused.load(Ordering::Relaxed);
-        if paused {
-            if !last_paused {
-                emit_active_snapshot(&app, &state);
-                let _ = app.emit("targets-update", all_snapshots(&state));
-            }
-            last_paused = true;
-            tokio::time::sleep(Duration::from_millis(250)).await;
+        if state.paused.load(Ordering::Relaxed) {
+            state.scheduler_notify.notified().await;
             continue;
-        }
-
-        if last_paused {
-            emit_active_snapshot(&app, &state);
-            last_paused = false;
         }
 
         let config = state.config.read().map(|c| c.clone()).unwrap_or_default();
@@ -981,9 +1004,7 @@ async fn probe_scheduler(app: AppHandle, state: Arc<SharedState>) {
         let now = Instant::now();
 
         for target in config.targets.iter().filter(|target| target.enabled) {
-            if !should_schedule_probe(&state, target, now)
-                || !mark_inflight(&state, &target.id, generation)
-            {
+            if !claim_probe(&state, target, now, generation) {
                 continue;
             }
 
@@ -1006,10 +1027,14 @@ async fn probe_scheduler(app: AppHandle, state: Arc<SharedState>) {
             });
         }
 
-        tokio::time::sleep(Duration::from_millis(SCHEDULER_TICK_MS)).await;
+        let wait = next_probe_delay(&state, &config, Instant::now(), generation)
+            .unwrap_or(Duration::from_secs(60));
+        tokio::select! {
+            _ = tokio::time::sleep(wait) => {}
+            _ = state.scheduler_notify.notified() => {}
+        }
     }
 }
-
 
 #[cfg(target_os = "macos")]
 fn native_ns_window_ptr(
@@ -1034,9 +1059,7 @@ fn native_ns_window_ptr(
 
 #[cfg(target_os = "macos")]
 fn configure_native_floating_window(app: &AppHandle) -> Result<(), String> {
-    use objc2_app_kit::{
-        NSColor, NSFloatingWindowLevel, NSWindowCollectionBehavior,
-    };
+    use objc2_app_kit::{NSColor, NSFloatingWindowLevel, NSWindowCollectionBehavior};
 
     let ns_window_ptr = native_ns_window_ptr(app, "main", "未找到悬浮窗口")?;
     let ns_window = unsafe { ns_window_ptr.as_ref() };
@@ -1323,6 +1346,7 @@ fn save_config(
     }
     state.generation.fetch_add(1, Ordering::Relaxed);
     state.reconcile_targets(&config);
+    state.scheduler_notify.notify_one();
 
     apply_floating_window_size(&app, &config.floating_size)?;
     apply_floating_window_effect(&app, &config.floating_size)?;
@@ -1338,6 +1362,7 @@ fn save_config(
 #[tauri::command]
 fn set_paused(app: AppHandle, state: State<'_, Arc<SharedState>>, paused: bool) -> bool {
     state.paused.store(paused, Ordering::Relaxed);
+    state.scheduler_notify.notify_one();
     refresh_tray_menu(&app, state.inner());
     emit_active_snapshot(&app, state.inner().as_ref());
     let _ = app.emit("targets-update", all_snapshots(state.inner().as_ref()));
@@ -1482,6 +1507,7 @@ fn build_tray(app: &mut tauri::App, state: Arc<SharedState>) -> tauri::Result<()
                 "toggle-pause" => {
                     let paused = menu_state.paused.load(Ordering::Relaxed);
                     menu_state.paused.store(!paused, Ordering::Relaxed);
+                    menu_state.scheduler_notify.notify_one();
                     emit_active_snapshot(app, &menu_state);
                     let _ = app.emit("targets-update", all_snapshots(&menu_state));
                     refresh_tray_menu(app, &menu_state);
@@ -1665,5 +1691,30 @@ mod tests {
         target.interval_ms = 200;
         target.timeout_ms = 100;
         assert_eq!(stale_after_ms(&target), 5_000);
+    }
+
+    #[test]
+    fn scheduler_deadline_is_immediate_before_first_probe() {
+        let config = AppConfig::default();
+        let state = SharedState::new(config.clone());
+        let generation = state.generation.load(Ordering::Relaxed);
+        let delay = next_probe_delay(&state, &config, Instant::now(), generation);
+        assert_eq!(delay, Some(Duration::ZERO));
+    }
+
+    #[test]
+    fn claimed_probe_waits_for_completion_before_rescheduling() {
+        let config = AppConfig::default();
+        let state = SharedState::new(config.clone());
+        let target = config.targets[0].clone();
+        let generation = state.generation.load(Ordering::Relaxed);
+
+        assert!(claim_probe(&state, &target, Instant::now(), generation));
+        assert_eq!(next_probe_delay(&state, &config, Instant::now(), generation), None);
+
+        clear_inflight(&state, &target.id, generation);
+        let delay = next_probe_delay(&state, &config, Instant::now(), generation).unwrap();
+        assert!(delay > Duration::ZERO);
+        assert!(delay <= Duration::from_millis(target.interval_ms));
     }
 }
