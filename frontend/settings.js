@@ -401,20 +401,20 @@ async function boot() {
 
   $('save').addEventListener('click', () => save(true, true));
 
+  // The active probe emits both target-update (for the table) and
+  // latency-update (for the active summary/HUD). Keep each event responsible
+  // for only one expensive surface so the settings page does not rebuild twice.
   await listen('latency-update', event => {
     const s = event.payload;
     snapshots.set(s.targetId, s);
     renderSnapshot(s);
-    renderTargetRows();
     queueChart();
   });
 
   await listen('target-update', event => {
     const s = event.payload;
     snapshots.set(s.targetId, s);
-    if (s.targetId === config.activeTargetId) renderSnapshot(s);
     renderTargetRows();
-    if (s.targetId === config.activeTargetId) queueChart();
   });
 
   await listen('targets-update', event => {
