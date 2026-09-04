@@ -406,8 +406,10 @@ async function boot() {
   // for only one expensive surface so the settings page does not rebuild twice.
   await listen('latency-update', event => {
     const s = event.payload;
+    const previous = snapshots.get(s.targetId);
     snapshots.set(s.targetId, s);
     renderSnapshot(s);
+    if (previous?.paused !== s.paused) renderTargetRows();
     queueChart();
   });
 
