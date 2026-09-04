@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>TCP Latency · Glass HUD</title>
+  <link rel="stylesheet" href="floating.css" />
+</head>
+<body>
+  <main
+    id="floating"
+    class="floating normal"
+    data-tauri-drag-region
+    role="status"
+    aria-live="polite"
+    title="拖动移动 · 双击打开设置"
+  >
+    <span id="statusDot" class="status-dot" aria-hidden="true"></span>
+
+    <div class="latency-row" data-tauri-drag-region>
+      <span id="latency" class="latency-value" data-tauri-drag-region>--</span>
+      <span id="unit" class="latency-unit" data-tauri-drag-region>ms</span>
+      <span id="trend" class="trend" data-tauri-drag-region aria-hidden="true"></span>
+    </div>
+
+    <div id="target" class="target" data-tauri-drag-region>Starting…</div>
+  </main>
+  <script src="floating.js"></script>
+</body>
+</html>

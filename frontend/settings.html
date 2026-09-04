@@ -1,0 +1,156 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>TCP Latency 设置</title>
+  <link rel="stylesheet" href="settings.css" />
+</head>
+<body>
+  <div class="app-shell">
+    <header>
+      <div>
+        <div class="eyebrow">TCP LATENCY · V0.6</div>
+        <h1>网络延迟监测</h1>
+        <p>Apple 风格悬浮 HUD · IPv4/IPv6 fallback · 最近 60 秒趋势</p>
+      </div>
+      <div id="liveBadge" class="live-badge">-- ms</div>
+    </header>
+
+    <section class="card summary-card">
+      <div class="summary">
+        <div><span>当前</span><strong id="current">--</strong></div>
+        <div><span>平均</span><strong id="avg">--</strong></div>
+        <div><span>最小</span><strong id="min">--</strong></div>
+        <div><span>最大</span><strong id="max">--</strong></div>
+        <div><span>P95</span><strong id="p95">--</strong></div>
+        <div><span>抖动</span><strong id="jitter">--</strong></div>
+        <div><span>失败率</span><strong id="failure">--</strong></div>
+        <div><span>DNS</span><strong id="dns">--</strong></div>
+      </div>
+      <div class="chart-head">
+        <div>
+          <b id="chartTitle">最近 60 秒</b>
+          <span id="chartSub">等待采样数据…</span>
+        </div>
+        <span class="legend">TCP Connect RTT</span>
+      </div>
+      <div class="chart-wrap">
+        <canvas id="historyChart"></canvas>
+        <div id="chartEmpty" class="chart-empty">等待采样数据…</div>
+      </div>
+    </section>
+
+    <section class="card">
+      <div class="section-title-row">
+        <div>
+          <h2>全部目标状态</h2>
+          <p>所有启用目标独立并行探测，单个目标超时不会阻塞其他目标。</p>
+        </div>
+        <span id="targetCount" class="count-pill">0 个目标</span>
+      </div>
+      <div class="target-table-wrap">
+        <table class="target-table">
+          <thead>
+            <tr>
+              <th>目标</th>
+              <th>地址</th>
+              <th>当前</th>
+              <th>平均</th>
+              <th>失败率</th>
+              <th>状态</th>
+            </tr>
+          </thead>
+          <tbody id="targetRows"></tbody>
+        </table>
+      </div>
+      <p class="hint">点击某一行可将其设为菜单栏和悬浮窗的主目标。</p>
+    </section>
+
+    <section class="card">
+      <div class="section-title-row">
+        <div>
+          <h2>监测目标</h2>
+          <p>DNS 解析先完成，因此图中的延迟不包含 DNS 查询时间。</p>
+        </div>
+        <button id="addTarget" class="secondary">+ 新增目标</button>
+      </div>
+
+      <label>主目标
+        <select id="activeTarget"></select>
+      </label>
+
+      <div class="grid two">
+        <label>名称<input id="name" /></label>
+        <label>Host / IP<input id="host" placeholder="1.1.1.1" /></label>
+        <label>TCP Port<input id="port" type="number" min="1" max="65535" /></label>
+        <label>检测间隔 (ms)<input id="intervalMs" type="number" min="200" max="60000" step="100" /></label>
+        <label>连接超时 (ms)<input id="timeoutMs" type="number" min="100" max="30000" step="100" /></label>
+        <label>地址族
+          <select id="addressFamily">
+            <option value="auto">Auto（IPv4 优先，失败自动尝试 IPv6）</option>
+            <option value="ipv4">仅 IPv4</option>
+            <option value="ipv6">仅 IPv6</option>
+          </select>
+        </label>
+        <label class="inline-check"><input id="targetEnabled" type="checkbox" /><span>启用该目标并行监测</span></label>
+      </div>
+      <div class="target-actions">
+        <button id="testTarget" class="secondary">立即测试</button>
+        <span id="testResult" class="test-result">修改 Host / Port 后可先测试，无需保存。</span>
+      </div>
+      <button id="deleteTarget" class="danger ghost">删除当前目标</button>
+    </section>
+
+    <section class="card">
+      <h2>悬浮窗与启动</h2>
+      <label class="toggle-row"><span><b>桌面悬浮延迟</b><small>始终置顶显示当前主目标实时数字</small></span><input id="showFloating" type="checkbox" /></label>
+      <label class="toggle-row"><span><b>鼠标穿透</b><small>锁定悬浮窗后不拦截浏览器、终端等应用的鼠标操作；可从菜单栏解除</small></span><input id="mousePassthrough" type="checkbox" /></label>
+      <label class="toggle-row"><span><b>显示目标名称</b><small>第二行显示当前主目标；长名称自动省略，不改变窗体宽度</small></span><input id="floatingShowTarget" type="checkbox" /></label>
+      <label class="toggle-row"><span><b>状态点</b><small>右上角使用很小的系统状态色提示，卡片背景始终保持中性</small></span><input id="floatingShowStatusDot" type="checkbox" /></label>
+      <label class="toggle-row"><span><b>延迟趋势箭头</b><small>可选显示 ↑ / ↓；默认关闭以保持 Apple 风格的极简视觉</small></span><input id="floatingShowTrend" type="checkbox" /></label>
+      <div class="grid three compact-grid">
+        <label>窗体尺寸
+          <select id="floatingSize">
+            <option value="compact">Compact · 178×76</option>
+            <option value="standard">Standard · 228×100</option>
+            <option value="large">Large · 268×116</option>
+          </select>
+        </label>
+        <label>毛玻璃透明度<input id="floatingOpacity" type="range" min="0.70" max="1" step="0.05" /><span id="floatingOpacityValue" class="range-value">82%</span></label>
+        <label>延迟字体大小<input id="floatingFontSize" type="range" min="30" max="52" step="1" /><span id="floatingFontSizeValue" class="range-value">42px</span></label>
+      </div>
+      <p class="hint">V0.6 默认使用 Standard：228×100 原生透明窗口、24px 圆角、SF 系统字体、Light/Dark 自动适配；运行界面与 HTML 预览共用同一套浮窗 CSS，异常只改变数字与小状态点。</p>
+      <label class="toggle-row"><span><b>登录时自动启动</b><small>使用 macOS LaunchAgent</small></span><input id="autostart" type="checkbox" /></label>
+      <label class="toggle-row"><span><b>暂停全部检测</b><small>保留程序运行，但停止所有目标的 TCP 探测</small></span><input id="paused" type="checkbox" /></label>
+    </section>
+
+    <section class="card">
+      <h2>异常通知</h2>
+      <label class="toggle-row"><span><b>macOS 系统通知</b><small>高延迟或连续失败达到条件时通知</small></span><input id="notificationsEnabled" type="checkbox" /></label>
+      <label class="toggle-row"><span><b>恢复通知</b><small>异常目标恢复可达或延迟回落后发送一次恢复消息</small></span><input id="notifyRecovery" type="checkbox" /></label>
+      <div class="grid three">
+        <label>连续高延迟次数<input id="notifyHighCount" type="number" min="1" max="30" /></label>
+        <label>连续失败次数<input id="notifyFailureCount" type="number" min="1" max="30" /></label>
+        <label>通知冷却 (秒)<input id="notificationCooldown" type="number" min="10" max="86400" /></label>
+      </div>
+      <p class="hint">高延迟判断使用下方 High 阈值。冷却时间用于防止持续异常时反复弹窗。</p>
+    </section>
+
+    <section class="card">
+      <h2>延迟阈值</h2>
+      <div class="grid three">
+        <label>Warning (ms)<input id="warningMs" type="number" min="1" /></label>
+        <label>High (ms)<input id="highMs" type="number" min="2" /></label>
+        <label>Critical (ms)<input id="criticalMs" type="number" min="3" /></label>
+      </div>
+    </section>
+
+    <footer>
+      <span id="message"></span>
+      <button id="save" class="primary">保存配置</button>
+    </footer>
+  </div>
+  <script src="settings.js"></script>
+</body>
+</html>

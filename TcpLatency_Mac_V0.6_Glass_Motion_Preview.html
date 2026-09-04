@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>TCP Latency V0.6 Glass HUD Preview</title>
+  <!-- 与真实悬浮窗共用同一个 CSS 文件，避免预览和运行样式两套实现。 -->
+  <link rel="stylesheet" href="frontend/floating.css" />
+  <style>
+    html,body{width:100%;height:100%;overflow:hidden}
+    body{
+      min-height:100vh;
+      display:grid;
+      place-items:center;
+      background:
+        radial-gradient(circle at 20% 20%,#b9d2f3,transparent 35%),
+        radial-gradient(circle at 80% 70%,#dec7ef,transparent 34%),
+        linear-gradient(135deg,#eef2f7,#d8dde6);
+    }
+    .floating{width:228px;height:100px;flex:none;opacity:1;transform:none}
+    .preview-hint{
+      position:fixed;bottom:28px;padding:8px 12px;border-radius:999px;
+      font:500 13px/1 -apple-system,BlinkMacSystemFont,"SF Pro Text",sans-serif;
+      color:#555;background:rgba(255,255,255,.55);backdrop-filter:blur(12px);
+      -webkit-backdrop-filter:blur(12px);user-select:none
+    }
+  </style>
+</head>
+<body class="is-ready">
+  <main id="floating" class="floating normal size-standard" role="status">
+    <span id="statusDot" class="status-dot" aria-hidden="true"></span>
+    <div class="latency-row">
+      <span id="latency" class="latency-value">27</span>
+      <span id="unit" class="latency-unit">ms</span>
+      <span id="trend" class="trend"></span>
+    </div>
+    <div id="target" class="target">qq.com</div>
+  </main>
+  <div class="preview-hint">V0.6：预览与真实悬浮窗共用 frontend/floating.css</div>
+  <script>
+    const hud=document.getElementById('floating');
+    const value=document.getElementById('latency');
+    let pointerFrame=0,pending=null;
+    hud.addEventListener('pointerenter',()=>hud.classList.add('is-hovered'));
+    hud.addEventListener('pointermove',e=>{
+      pending={x:e.clientX,y:e.clientY};
+      if(pointerFrame)return;
+      pointerFrame=requestAnimationFrame(()=>{
+        pointerFrame=0;
+        const r=hud.getBoundingClientRect();
+        hud.style.setProperty('--pointer-x',((pending.x-r.left)/r.width*100).toFixed(1)+'%');
+        hud.style.setProperty('--pointer-y',((pending.y-r.top)/r.height*100).toFixed(1)+'%');
+      });
+    },{passive:true});
+    hud.addEventListener('pointerleave',()=>{
+      hud.classList.remove('is-hovered');
+      hud.style.setProperty('--pointer-x','50%');
+      hud.style.setProperty('--pointer-y','18%');
+    });
+    const values=[27,31,29,46,82,36];let i=0;
+    setInterval(()=>{
+      i=(i+1)%values.length;
+      value.classList.remove('value-updated'); void value.offsetWidth;
+      value.textContent=values[i]; value.classList.add('value-updated');
+    },1400);
+  </script>
+</body>
+</html>
