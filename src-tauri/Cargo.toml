@@ -1,6 +1,6 @@
 [package]
 name = "tcp-latency"
-version = "0.8.0"
+version = "0.8.1"
 description = "A lightweight macOS multi-target TCP latency monitor with native frosted-glass HUD and objc2 AppKit integration"
 authors = ["hutong"]
 edition = "2021"
