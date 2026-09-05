@@ -16,11 +16,15 @@ if command -v python3 >/dev/null 2>&1; then
   python3 - <<'PYTOML'
 import tomllib
 with open("src-tauri/Cargo.toml", "rb") as f:
-    tomllib.load(f)
+    cargo = tomllib.load(f)
+assert cargo["package"]["version"] == "0.8.1"
 PYTOML
 else
   echo "WARN: python3 不存在，跳过 JSON/TOML 语法检查"
 fi
+
+grep -q '"version": "0.8.1"' src-tauri/tauri.conf.json
+grep -q '"shadow": false' src-tauri/tauri.conf.json
 
 # Backend module boundaries: main.rs should only assemble the application.
 for module in config probe runtime macos_window tray commands; do
@@ -80,7 +84,11 @@ done
 grep -q 'floatingShowStatusDot' frontend/settings.js
 grep -q 'floatingShowTrend' frontend/settings.js
 grep -q 'floatingSize' frontend/settings.js
-grep -q 'target-update.*table' frontend/settings.js
+grep -q 'queueTargetRows' frontend/settings.js
+grep -q 'requestAnimationFrame' frontend/settings.js
+grep -q 'restartAnimationClass' frontend/floating.js
+grep -q 'latestSnapshot' frontend/floating.js
+! grep -q 'offsetWidth' frontend/floating.js
 grep -q 'prefers-color-scheme: dark' frontend/floating.css
 grep -q 'font-variant-numeric: tabular-nums' frontend/floating.css
 grep -q 'status-dot' frontend/floating.css
@@ -94,5 +102,6 @@ grep -q 'config.uiVersion = 7' frontend/settings.js
 
 test -x script/build_and_run.sh
 test -f .codex/environments/environment.toml
+test -f CHANGELOG_V0.8.1.md
 
 echo "Static checks passed."
