@@ -5,6 +5,7 @@ const $ = id => document.getElementById(id);
 let config;
 let snapshots = new Map();
 let chartQueued = false;
+let targetRowsFrame = 0;
 
 function fmt(value, suffix = ' ms') {
   return value == null ? '--' : `${Math.round(value * 10) / 10}${suffix}`;
@@ -209,6 +210,14 @@ function renderTargetRows() {
   }
 }
 
+function queueTargetRows() {
+  if (targetRowsFrame) return;
+  targetRowsFrame = requestAnimationFrame(() => {
+    targetRowsFrame = 0;
+    renderTargetRows();
+  });
+}
+
 function chartColors() {
   const style = getComputedStyle(document.documentElement);
   return {
@@ -401,27 +410,29 @@ async function boot() {
 
   $('save').addEventListener('click', () => save(true, true));
 
+  // The active probe emits both target-update (for the table) and
+  // latency-update (for the active summary/HUD). Table refreshes are batched
+  // to one animation frame so simultaneous multi-target updates coalesce.
   await listen('latency-update', event => {
     const s = event.payload;
+    const previous = snapshots.get(s.targetId);
     snapshots.set(s.targetId, s);
     renderSnapshot(s);
-    renderTargetRows();
+    if (previous?.paused !== s.paused) queueTargetRows();
     queueChart();
   });
 
   await listen('target-update', event => {
     const s = event.payload;
     snapshots.set(s.targetId, s);
-    if (s.targetId === config.activeTargetId) renderSnapshot(s);
-    renderTargetRows();
-    if (s.targetId === config.activeTargetId) queueChart();
+    queueTargetRows();
   });
 
   await listen('targets-update', event => {
     snapshots = new Map(event.payload.map(s => [s.targetId, s]));
     const active = snapshots.get(config.activeTargetId);
     if (active) renderSnapshot(active);
-    renderTargetRows();
+    queueTargetRows();
   });
 
   await listen('config-update', event => {

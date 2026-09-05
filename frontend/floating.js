@@ -16,7 +16,14 @@ let config = null;
 let previousMs = null;
 let lastValueKey = '';
 let lastVisualState = null;
+let lastVisualClasses = '';
+let latestSnapshot = null;
 let readyApplied = false;
+
+function restartAnimationClass(element, className) {
+  element.classList.remove(className);
+  requestAnimationFrame(() => element.classList.add(className));
+}
 
 function classForLatency(ms) {
   if (!config || ms == null) return 'normal';
@@ -49,8 +56,6 @@ function applyFloatingPreferences() {
   const size = normalizedSize(config.floatingSize);
 
   const normalizedOpacity = Math.max(0.70, Math.min(1, opacity));
-  // At the default 0.82 these values are exactly the same as the bundled
-  // preview. The native material provides blur only; CSS owns the visible tint.
   const scale = normalizedOpacity / 0.82;
   const clampAlpha = value => Math.max(0.04, Math.min(0.92, value));
   floatingEl.style.setProperty('--floating-opacity', String(normalizedOpacity));
@@ -75,21 +80,21 @@ function applyFloatingPreferences() {
 
 function setValue(value, unit = '', trend = '') {
   const valueKey = `${value}|${unit}|${trend}`;
+  if (valueKey === lastValueKey) return;
+
   latencyEl.textContent = value;
   unitEl.textContent = unit;
   trendEl.textContent = trend;
-
-  if (valueKey !== lastValueKey) {
-    latencyEl.classList.remove('value-updated');
-    // Restart the subtle fade animation without changing layout.
-    void latencyEl.offsetWidth;
-    latencyEl.classList.add('value-updated');
-    lastValueKey = valueKey;
-  }
+  restartAnimationClass(latencyEl, 'value-updated');
+  lastValueKey = valueKey;
 }
 
 function setVisualState(...states) {
-  const nextState = states.find(Boolean) || 'normal';
+  const activeStates = states.filter(Boolean);
+  const nextState = activeStates[0] || 'normal';
+  const nextClasses = activeStates.join('|');
+  if (nextClasses === lastVisualClasses) return;
+
   const preserved = [...floatingEl.classList].filter(name =>
     name.startsWith('size-') ||
     name === 'hide-target' ||
@@ -100,24 +105,27 @@ function setVisualState(...states) {
 
   floatingEl.className = 'floating';
   preserved.forEach(name => floatingEl.classList.add(name));
-  states.filter(Boolean).forEach(name => floatingEl.classList.add(name));
+  activeStates.forEach(name => floatingEl.classList.add(name));
 
   if (lastVisualState !== null && nextState !== lastVisualState) {
-    floatingEl.classList.remove('state-changed');
-    void floatingEl.offsetWidth;
-    floatingEl.classList.add('state-changed');
+    restartAnimationClass(floatingEl, 'state-changed');
   }
   lastVisualState = nextState;
+  lastVisualClasses = nextClasses;
 }
 
 function render(snapshot) {
-  applyFloatingPreferences();
+  latestSnapshot = snapshot;
 
   const targetLabel = snapshot.targetName || snapshot.host || `${snapshot.host}:${snapshot.port}`;
-  targetEl.textContent = targetLabel;
-  targetEl.title = `${snapshot.host || '--'}:${snapshot.port || '--'}`;
-  floatingEl.setAttribute('aria-label', `${targetLabel} 网络延迟状态`);
-  statusDotEl.setAttribute('title', snapshot.status || 'unknown');
+  const targetTitle = `${snapshot.host || '--'}:${snapshot.port || '--'}`;
+  const ariaLabel = `${targetLabel} 网络延迟状态`;
+  const statusTitle = snapshot.status || 'unknown';
+
+  if (targetEl.textContent !== targetLabel) targetEl.textContent = targetLabel;
+  if (targetEl.title !== targetTitle) targetEl.title = targetTitle;
+  if (floatingEl.getAttribute('aria-label') !== ariaLabel) floatingEl.setAttribute('aria-label', ariaLabel);
+  if (statusDotEl.getAttribute('title') !== statusTitle) statusDotEl.setAttribute('title', statusTitle);
 
   if (snapshot.paused) {
     setVisualState('paused', 'status-text');
@@ -199,10 +207,9 @@ async function boot() {
     floatingEl.title = config.mousePassthrough
       ? '鼠标穿透已开启 · 请从菜单栏解除'
       : '拖动移动 · 双击打开设置';
+    if (latestSnapshot) render(latestSnapshot);
   });
 
-  // Material interaction: a restrained specular highlight follows the cursor.
-  // It disappears automatically when native mouse passthrough is enabled.
   floatingEl.addEventListener('pointerenter', () => {
     if (!config?.mousePassthrough) floatingEl.classList.add('is-hovered');
   });
