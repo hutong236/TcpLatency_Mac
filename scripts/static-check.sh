@@ -19,28 +19,54 @@ with open("src-tauri/Cargo.toml", "rb") as f:
     tomllib.load(f)
 PYTOML
 else
-  echo "WARN: python3 不存在，跳过 JSON 语法检查"
+  echo "WARN: python3 不存在，跳过 JSON/TOML 语法检查"
 fi
 
-grep -q 'set_ignore_cursor_events' src-tauri/src/main.rs
-grep -q 'tauri_plugin_notification' src-tauri/src/main.rs
-grep -q 'probe_scheduler' src-tauri/src/main.rs
-grep -q 'get_history' src-tauri/src/main.rs
-grep -q 'target-update' src-tauri/src/main.rs
-grep -q 'address_family' src-tauri/src/main.rs
-grep -q 'p95_ms' src-tauri/src/main.rs
-grep -q 'sample_age_ms' src-tauri/src/main.rs
-grep -q 'test_target' src-tauri/src/main.rs
-grep -q 'notify_recovery' src-tauri/src/main.rs
-grep -q 'generation: AtomicU64' src-tauri/src/main.rs
+# Backend module boundaries: main.rs should only assemble the application.
+for module in config probe runtime macos_window tray commands; do
+  test -f "src-tauri/src/${module}.rs"
+  grep -q "mod ${module};" src-tauri/src/main.rs
+done
+test "$(wc -l < src-tauri/src/main.rs | tr -d ' ')" -le 180
 
-grep -q 'scheduler_notify: Notify' src-tauri/src/main.rs
-grep -q 'next_probe_delay' src-tauri/src/main.rs
-grep -q 'tokio::select!' src-tauri/src/main.rs
+grep -q 'pub(crate) struct AppConfig' src-tauri/src/config.rs
+grep -q 'validate_config' src-tauri/src/config.rs
+grep -q 'endpoint_key' src-tauri/src/config.rs
+
+grep -q 'DNS_CACHE_TTL' src-tauri/src/probe.rs
+grep -q 'DNS_CACHE_MAX_ENTRIES' src-tauri/src/probe.rs
+grep -q 'invalidate_cached_addresses' src-tauri/src/probe.rs
+grep -q 'tcp_probe' src-tauri/src/probe.rs
+
+grep -q 'scheduler_notify: Notify' src-tauri/src/runtime.rs
+grep -q 'next_probe_delay' src-tauri/src/runtime.rs
+grep -q 'tokio::select!' src-tauri/src/runtime.rs
+grep -q 'runtime.samples.clone()' src-tauri/src/runtime.rs
+grep -q 'p95_ms' src-tauri/src/runtime.rs
+grep -q 'sample_age_ms' src-tauri/src/runtime.rs
+! grep -q 'SCHEDULER_TICK_MS' src-tauri/src/runtime.rs
+! grep -q 'sleep(Duration::from_millis(250))' src-tauri/src/runtime.rs
+
+grep -q 'set_ignore_cursor_events' src-tauri/src/macos_window.rs
+grep -q 'Effect::UnderWindowBackground' src-tauri/src/macos_window.rs
+grep -q 'configure_native_floating_window' src-tauri/src/macos_window.rs
+grep -q 'configure_native_settings_window' src-tauri/src/macos_window.rs
+grep -q 'activate_settings_window_native' src-tauri/src/macos_window.rs
+grep -q 'makeKeyAndOrderFront(None)' src-tauri/src/macos_window.rs
+grep -q 'NSWindowCollectionBehavior::CanJoinAllSpaces' src-tauri/src/macos_window.rs
+grep -q 'ns_window.setHasShadow(false);' src-tauri/src/macos_window.rs
+! grep -q 'ns_window.setHasShadow(true);' src-tauri/src/macos_window.rs
+! grep -R -q 'cocoa::' src-tauri/src
+! grep -R -q 'activateIgnoringOtherApps' src-tauri/src
+
+grep -q 'build_tray' src-tauri/src/tray.rs
+grep -q 'show_settings_window' src-tauri/src/tray.rs
+grep -q 'get_history' src-tauri/src/commands.rs
+grep -q 'test_target' src-tauri/src/commands.rs
+grep -q 'notify_recovery' src-tauri/src/config.rs
 grep -q '"sync"' src-tauri/Cargo.toml
-! grep -q 'SCHEDULER_TICK_MS' src-tauri/src/main.rs
-! grep -q 'sleep(Duration::from_millis(250))' src-tauri/src/main.rs
-grep -q 'target-update.*table' frontend/settings.js
+grep -q 'objc2-app-kit = "0.3.2"' src-tauri/Cargo.toml
+! grep -q 'cocoa = ' src-tauri/Cargo.toml
 
 for icon in \
   src-tauri/icons/icon.png \
@@ -51,41 +77,21 @@ for icon in \
   test -f "$icon"
 done
 
-grep -q 'floating_size' src-tauri/src/main.rs
-grep -q 'apply_floating_window_size' src-tauri/src/main.rs
-grep -q 'ui_version: 7' src-tauri/src/main.rs
 grep -q 'floatingShowStatusDot' frontend/settings.js
 grep -q 'floatingShowTrend' frontend/settings.js
 grep -q 'floatingSize' frontend/settings.js
+grep -q 'target-update.*table' frontend/settings.js
 grep -q 'prefers-color-scheme: dark' frontend/floating.css
 grep -q 'font-variant-numeric: tabular-nums' frontend/floating.css
 grep -q 'status-dot' frontend/floating.css
-
-grep -q 'Effect::UnderWindowBackground' src-tauri/src/main.rs
-grep -q 'apply_floating_window_effect' src-tauri/src/main.rs
 grep -q '@keyframes glassEnter' frontend/floating.css
 grep -q '@keyframes glassSheenDrift' frontend/floating.css
 grep -q 'prefers-reduced-motion' frontend/floating.css
 grep -q -- '--pointer-x' frontend/floating.js
-
-grep -q 'show_settings_window' src-tauri/src/main.rs
-grep -q 'ActivationPolicy::Regular' src-tauri/src/main.rs
-grep -q 'CloseRequested' src-tauri/src/main.rs
 grep -q -- '--glass-border-alpha' frontend/floating.css
 grep -q 'padding: 0;' frontend/floating.css
 grep -q 'config.uiVersion = 7' frontend/settings.js
 
-grep -q 'configure_native_floating_window' src-tauri/src/main.rs
-grep -q 'configure_native_settings_window' src-tauri/src/main.rs
-grep -q 'activate_settings_window_native' src-tauri/src/main.rs
-grep -q 'makeKeyAndOrderFront(None)' src-tauri/src/main.rs
-grep -q 'NSWindowCollectionBehavior::CanJoinAllSpaces' src-tauri/src/main.rs
-grep -q 'objc2-app-kit = "0.3.2"' src-tauri/Cargo.toml
-! grep -q 'cocoa = ' src-tauri/Cargo.toml
-! grep -q 'cocoa::' src-tauri/src/main.rs
-! grep -q 'activateIgnoringOtherApps' src-tauri/src/main.rs
-grep -q 'ns_window.setHasShadow(false);' src-tauri/src/main.rs
-! grep -q 'ns_window.setHasShadow(true);' src-tauri/src/main.rs
 test -x script/build_and_run.sh
 test -f .codex/environments/environment.toml
 
