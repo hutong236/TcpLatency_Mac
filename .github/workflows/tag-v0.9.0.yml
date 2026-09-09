@@ -1,0 +1,31 @@
+name: Tag v0.9.0
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - .github/workflows/tag-v0.9.0.yml
+
+permissions:
+  contents: write
+
+jobs:
+  tag:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Create v0.9.0 tag on merged feature commit
+        run: |
+          set -euo pipefail
+          TARGET_SHA="507b552bfb938754eda3d1804775b98f6d76dbe5"
+          if git ls-remote --exit-code --tags origin "refs/tags/v0.9.0" >/dev/null 2>&1; then
+            echo "v0.9.0 already exists"
+            exit 0
+          fi
+          git tag -a v0.9.0 "$TARGET_SHA" -m "TCP Latency v0.9.0 - live network traffic HUD"
+          git push origin refs/tags/v0.9.0
