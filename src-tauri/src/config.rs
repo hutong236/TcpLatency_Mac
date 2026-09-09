@@ -31,6 +31,9 @@ fn default_floating_font_size() -> u32 {
 fn default_floating_size() -> String {
     "standard".into()
 }
+fn default_traffic_interface() -> String {
+    "auto".into()
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default, rename_all = "camelCase")]
@@ -112,6 +115,10 @@ pub(crate) struct AppConfig {
     pub(crate) floating_show_status_dot: bool,
     #[serde(default)]
     pub(crate) floating_show_trend: bool,
+    #[serde(default = "default_true")]
+    pub(crate) floating_show_traffic: bool,
+    #[serde(default = "default_traffic_interface")]
+    pub(crate) traffic_interface: String,
     #[serde(default)]
     pub(crate) ui_version: u32,
 }
@@ -136,6 +143,8 @@ impl Default for AppConfig {
             floating_size: default_floating_size(),
             floating_show_status_dot: true,
             floating_show_trend: false,
+            floating_show_traffic: true,
+            traffic_interface: default_traffic_interface(),
             ui_version: 7,
         }
     }
@@ -214,6 +223,15 @@ fn valid_target_id(id: &str) -> bool {
             .all(|ch| ch.is_ascii_alphanumeric() || ch == '-' || ch == '_')
 }
 
+fn valid_interface_name(name: &str) -> bool {
+    name == "auto"
+        || (!name.is_empty()
+            && name.len() <= 32
+            && name
+                .chars()
+                .all(|ch| ch.is_ascii_alphanumeric() || matches!(ch, '-' | '_' | '.')))
+}
+
 pub(crate) fn validate_config(mut config: AppConfig) -> Result<AppConfig, String> {
     if config.targets.is_empty() {
         return Err("至少需要配置一个监测目标".into());
@@ -280,6 +298,15 @@ pub(crate) fn validate_config(mut config: AppConfig) -> Result<AppConfig, String
     if !matches!(config.floating_size.as_str(), "compact" | "standard" | "large") {
         return Err("悬浮窗尺寸必须是 compact / standard / large".into());
     }
+
+    config.traffic_interface = config.traffic_interface.trim().to_ascii_lowercase();
+    if config.traffic_interface.is_empty() {
+        config.traffic_interface = default_traffic_interface();
+    }
+    if !valid_interface_name(&config.traffic_interface) {
+        return Err("流量接口必须是 auto 或合法的 macOS 接口名（如 en0 / utun3）".into());
+    }
+
     config.ui_version = 7;
 
     Ok(config)
@@ -311,6 +338,8 @@ mod tests {
         assert_eq!(config.floating_size, "standard");
         assert!(config.floating_show_status_dot);
         assert!(!config.floating_show_trend);
+        assert!(config.floating_show_traffic);
+        assert_eq!(config.traffic_interface, "auto");
         assert_eq!(config.ui_version, 7);
     }
 
@@ -332,5 +361,12 @@ mod tests {
         let changed_host = endpoint_key(&target);
         target.address_family = "ipv6".into();
         assert_ne!(changed_host, endpoint_key(&target));
+    }
+
+    #[test]
+    fn traffic_interface_validation_accepts_common_names() {
+        let mut config = AppConfig::default();
+        config.traffic_interface = "utun3".into();
+        assert!(validate_config(config).is_ok());
     }
 }
