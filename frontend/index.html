@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>TCP Latency · Glass HUD</title>
   <link rel="stylesheet" href="floating.css" />
+  <link rel="stylesheet" href="traffic.css" />
 </head>
 <body>
   <main
@@ -23,8 +24,20 @@
       <span id="trend" class="trend" data-tauri-drag-region aria-hidden="true"></span>
     </div>
 
+    <div id="trafficRow" class="traffic-row" data-tauri-drag-region>
+      <span class="traffic-item traffic-download" data-tauri-drag-region>
+        <span class="traffic-arrow" aria-hidden="true">↓</span>
+        <span id="downloadRate" class="traffic-value" data-tauri-drag-region>--</span>
+      </span>
+      <span class="traffic-item traffic-upload" data-tauri-drag-region>
+        <span class="traffic-arrow" aria-hidden="true">↑</span>
+        <span id="uploadRate" class="traffic-value" data-tauri-drag-region>--</span>
+      </span>
+    </div>
+
     <div id="target" class="target" data-tauri-drag-region>Starting…</div>
   </main>
   <script src="floating.js"></script>
+  <script src="traffic-floating.js"></script>
 </body>
 </html>
