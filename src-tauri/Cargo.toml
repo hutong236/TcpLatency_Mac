@@ -28,3 +28,4 @@ panic = "abort"
 
 [target.'cfg(target_os = "macos")'.dependencies]
 objc2-app-kit = "0.3.2"
+libc = "0.2"

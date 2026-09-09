@@ -3,6 +3,7 @@ mod config;
 mod macos_window;
 mod probe;
 mod runtime;
+mod traffic;
 mod tray;
 
 use crate::{
@@ -13,6 +14,7 @@ use crate::{
         set_floating_visibility, set_mouse_passthrough_native,
     },
     runtime::{all_snapshots, emit_active_snapshot, probe_scheduler, SharedState},
+    traffic::traffic_sampler,
     tray::build_tray,
 };
 use std::sync::Arc;
@@ -96,6 +98,12 @@ fn main() {
             let loop_state = setup_state.clone();
             tauri::async_runtime::spawn(async move {
                 probe_scheduler(app_handle, loop_state).await;
+            });
+
+            let traffic_handle = app.handle().clone();
+            let traffic_state = setup_state.clone();
+            tauri::async_runtime::spawn(async move {
+                traffic_sampler(traffic_handle, traffic_state).await;
             });
 
             Ok(())
