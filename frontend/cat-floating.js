@@ -28,7 +28,7 @@ function defaultCatMarkup() {
 
 function pixelCatMarkup() {
   return `
-    <svg class="cat-svg cat-pixel-svg" viewBox="0 0 72 44" focusable="false" aria-hidden="true" shape-rendering="crispEdges">
+    <svg class="cat-svg cat-pixel-svg" viewBox="0 0 72 44" focusable="false" aria-hidden="true" shape-rendering="crispEdges" fill="currentColor">
       <g class="cat-tail"><rect x="7" y="20" width="12" height="4"/><rect x="5" y="15" width="4" height="7"/></g>
       <g class="cat-body"><rect x="18" y="17" width="30" height="16"/><rect x="14" y="21" width="6" height="8"/></g>
       <g class="cat-head"><rect x="44" y="11" width="17" height="17"/><rect x="46" y="7" width="5" height="6"/><rect x="55" y="7" width="5" height="6"/></g>
@@ -281,6 +281,13 @@ function applyCatTraffic(snapshot) {
 async function applyCatConfig(nextConfig) {
   catConfig = nextConfig;
   applyCatVisibilityAndMotion();
+  if (catConfig.networkCatEnabled === false) {
+    if (customObjectUrl) {
+      revokeCustomObjectUrl();
+      lastTheme = '';
+    }
+    return;
+  }
   await applyTheme();
   if (latestCatSnapshot) applyCatSnapshot(latestCatSnapshot);
   if (latestTrafficSnapshot) applyCatTraffic(latestTrafficSnapshot);
