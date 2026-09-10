@@ -9,6 +9,7 @@
   width: 58px;
   height: 38px;
   margin-right: 5px;
+  align-self: center;
   color: var(--primary);
   pointer-events: none;
   opacity: .94;
@@ -61,13 +62,13 @@
   height: 4px;
   border-radius: 50%;
   background: var(--normal-dot);
-  box-shadow: 0 0 6px color-mix(in srgb, var(--normal-dot) 48%, transparent);
+  box-shadow: 0 0 6px rgba(0,0,0,.10);
   opacity: .65;
   animation: catPacket var(--packet-cycle) linear infinite;
 }
 
-.cat-packet.p2 { animation-delay: calc(var(--packet-cycle) * -0.34); }
-.cat-packet.p3 { animation-delay: calc(var(--packet-cycle) * -0.68); }
+.cat-packet.p2 { animation-delay: -280ms; }
+.cat-packet.p3 { animation-delay: -560ms; }
 
 .cat-stage[data-traffic="0"] .cat-packet.p2,
 .cat-stage[data-traffic="0"] .cat-packet.p3 { opacity: 0; }
@@ -161,6 +162,19 @@
   opacity: .2;
   animation-duration: 1800ms;
 }
+
+/* Status strings can be wider than numeric RTT values. Keep the cat visible
+   but reduce its footprint so DNS Timeout / Disabled still fit compact HUDs. */
+.status-text .cat-stage {
+  flex-basis: 42px;
+  width: 42px;
+  height: 32px;
+  margin-right: 2px;
+}
+.status-text .cat-svg { width: 36px; height: 32px; }
+.status-text .cat-packet { top: 14px; width: 3px; height: 3px; }
+.size-compact.status-text .cat-stage { flex-basis: 32px; width: 32px; }
+.size-compact.status-text .cat-svg { width: 29px; }
 
 .size-compact .cat-stage {
   flex-basis: 44px;
