@@ -1,0 +1,239 @@
+/* Animated network cat: a purely presentational layer driven by existing
+   latency/traffic events. It never participates in probe timing or input. */
+.cat-stage {
+  --cat-cycle: 520ms;
+  --packet-cycle: 820ms;
+  position: relative;
+  z-index: 2;
+  flex: 0 0 58px;
+  width: 58px;
+  height: 38px;
+  margin-right: 5px;
+  color: var(--primary);
+  pointer-events: none;
+  opacity: .94;
+  transform: translateY(1px);
+}
+
+.cat-svg {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 46px;
+  height: 38px;
+  overflow: visible;
+  filter: drop-shadow(0 1px 1px rgba(0,0,0,.08));
+}
+
+.cat-body,
+.cat-head,
+.cat-tail,
+.cat-leg,
+.cat-ear,
+.cat-eye {
+  transform-box: fill-box;
+}
+
+.cat-body,
+.cat-head {
+  animation: catBob var(--cat-cycle) cubic-bezier(.45,.05,.55,.95) infinite;
+}
+
+.cat-tail {
+  transform-origin: 8% 70%;
+  animation: catTail var(--cat-cycle) ease-in-out infinite alternate;
+}
+
+.cat-leg.front {
+  transform-origin: 50% 8%;
+  animation: catLegFront var(--cat-cycle) ease-in-out infinite;
+}
+
+.cat-leg.back {
+  transform-origin: 50% 8%;
+  animation: catLegBack var(--cat-cycle) ease-in-out infinite;
+}
+
+.cat-packet {
+  position: absolute;
+  top: 17px;
+  right: 1px;
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: var(--normal-dot);
+  box-shadow: 0 0 6px color-mix(in srgb, var(--normal-dot) 48%, transparent);
+  opacity: .65;
+  animation: catPacket var(--packet-cycle) linear infinite;
+}
+
+.cat-packet.p2 { animation-delay: calc(var(--packet-cycle) * -0.34); }
+.cat-packet.p3 { animation-delay: calc(var(--packet-cycle) * -0.68); }
+
+.cat-stage[data-traffic="0"] .cat-packet.p2,
+.cat-stage[data-traffic="0"] .cat-packet.p3 { opacity: 0; }
+.cat-stage[data-traffic="0"] .cat-packet.p1 { opacity: .28; }
+.cat-stage[data-traffic="1"] .cat-packet.p3 { opacity: 0; }
+.cat-stage[data-traffic="1"] .cat-packet.p1,
+.cat-stage[data-traffic="1"] .cat-packet.p2 { opacity: .46; }
+.cat-stage[data-traffic="2"] .cat-packet { opacity: .68; }
+.cat-stage[data-traffic="3"] .cat-packet { opacity: .95; }
+
+.warning .cat-packet { background: var(--warning); }
+.high .cat-packet { background: var(--high); }
+.critical .cat-packet,
+.timeout .cat-packet,
+.offline .cat-packet,
+.refused .cat-packet,
+.dns-error .cat-packet { background: var(--critical); }
+
+/* High latency reads as effort rather than frantic motion. */
+.cat-stage[data-state="high"] .cat-body,
+.cat-stage[data-state="high"] .cat-head,
+.cat-stage[data-state="critical"] .cat-body,
+.cat-stage[data-state="critical"] .cat-head {
+  animation-name: catHeavyStep;
+}
+
+/* Failures: the cat settles down and packets stop moving. */
+.cat-stage[data-state="timeout"],
+.cat-stage[data-state="offline"],
+.cat-stage[data-state="refused"],
+.cat-stage[data-state="dns_timeout"],
+.cat-stage[data-state="dns_error"] {
+  opacity: .68;
+}
+
+.cat-stage[data-state="timeout"] .cat-body,
+.cat-stage[data-state="timeout"] .cat-head,
+.cat-stage[data-state="timeout"] .cat-leg,
+.cat-stage[data-state="offline"] .cat-body,
+.cat-stage[data-state="offline"] .cat-head,
+.cat-stage[data-state="offline"] .cat-leg,
+.cat-stage[data-state="refused"] .cat-body,
+.cat-stage[data-state="refused"] .cat-head,
+.cat-stage[data-state="refused"] .cat-leg,
+.cat-stage[data-state="dns_timeout"] .cat-body,
+.cat-stage[data-state="dns_timeout"] .cat-head,
+.cat-stage[data-state="dns_timeout"] .cat-leg,
+.cat-stage[data-state="dns_error"] .cat-body,
+.cat-stage[data-state="dns_error"] .cat-head,
+.cat-stage[data-state="dns_error"] .cat-leg {
+  animation: catRest 2.2s ease-in-out infinite;
+}
+
+.cat-stage[data-state="timeout"] .cat-tail,
+.cat-stage[data-state="offline"] .cat-tail,
+.cat-stage[data-state="refused"] .cat-tail,
+.cat-stage[data-state="dns_timeout"] .cat-tail,
+.cat-stage[data-state="dns_error"] .cat-tail {
+  animation: catSleepTail 2.8s ease-in-out infinite;
+}
+
+.cat-stage[data-state="timeout"] .cat-packet,
+.cat-stage[data-state="offline"] .cat-packet,
+.cat-stage[data-state="refused"] .cat-packet,
+.cat-stage[data-state="dns_timeout"] .cat-packet,
+.cat-stage[data-state="dns_error"] .cat-packet {
+  animation-play-state: paused;
+  opacity: .18;
+}
+
+/* Paused/disabled/starting/stale become calm idle states. */
+.cat-stage[data-state="paused"] .cat-body,
+.cat-stage[data-state="paused"] .cat-head,
+.cat-stage[data-state="paused"] .cat-leg,
+.cat-stage[data-state="disabled"] .cat-body,
+.cat-stage[data-state="disabled"] .cat-head,
+.cat-stage[data-state="disabled"] .cat-leg,
+.cat-stage[data-state="starting"] .cat-body,
+.cat-stage[data-state="starting"] .cat-head,
+.cat-stage[data-state="starting"] .cat-leg,
+.cat-stage[data-state="stale"] .cat-body,
+.cat-stage[data-state="stale"] .cat-head,
+.cat-stage[data-state="stale"] .cat-leg {
+  animation: catIdle 1.8s ease-in-out infinite;
+}
+
+.cat-stage[data-state="paused"] .cat-packet,
+.cat-stage[data-state="disabled"] .cat-packet,
+.cat-stage[data-state="starting"] .cat-packet,
+.cat-stage[data-state="stale"] .cat-packet {
+  opacity: .2;
+  animation-duration: 1800ms;
+}
+
+.size-compact .cat-stage {
+  flex-basis: 44px;
+  width: 44px;
+  height: 31px;
+  margin-right: 2px;
+  transform: translateY(2px);
+}
+.size-compact .cat-svg { width: 38px; height: 31px; }
+.size-compact .cat-packet { top: 14px; width: 3px; height: 3px; }
+
+.size-large .cat-stage {
+  flex-basis: 66px;
+  width: 66px;
+  height: 43px;
+  margin-right: 7px;
+}
+.size-large .cat-svg { width: 53px; height: 43px; }
+.size-large .cat-packet { top: 19px; width: 5px; height: 5px; }
+
+@keyframes catBob {
+  0%, 100% { transform: translateY(1px); }
+  50% { transform: translateY(-1.8px); }
+}
+
+@keyframes catHeavyStep {
+  0%, 100% { transform: translateY(1.4px) scaleY(.985); }
+  50% { transform: translateY(-.5px) scaleY(1); }
+}
+
+@keyframes catTail {
+  from { transform: rotate(-8deg); }
+  to { transform: rotate(11deg); }
+}
+
+@keyframes catLegFront {
+  0%, 100% { transform: rotate(17deg) translateY(0); }
+  50% { transform: rotate(-18deg) translateY(-1px); }
+}
+
+@keyframes catLegBack {
+  0%, 100% { transform: rotate(-18deg) translateY(-1px); }
+  50% { transform: rotate(17deg) translateY(0); }
+}
+
+@keyframes catPacket {
+  0% { transform: translateX(3px) scale(.72); opacity: 0; }
+  18% { opacity: .9; }
+  82% { opacity: .55; }
+  100% { transform: translateX(-18px) scale(1.05); opacity: 0; }
+}
+
+@keyframes catRest {
+  0%, 100% { transform: translateY(3px) scaleY(.94); }
+  50% { transform: translateY(2px) scaleY(.97); }
+}
+
+@keyframes catSleepTail {
+  0%, 100% { transform: rotate(17deg); }
+  50% { transform: rotate(11deg); }
+}
+
+@keyframes catIdle {
+  0%, 100% { transform: translateY(1px); }
+  50% { transform: translateY(0); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cat-stage *,
+  .cat-stage::before,
+  .cat-stage::after {
+    animation: none !important;
+    transition: none !important;
+  }
+  .cat-packet { opacity: .35 !important; }
+}
