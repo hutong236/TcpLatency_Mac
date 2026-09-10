@@ -1,4 +1,4 @@
-name: Create v0.11.0 Tag
+name: Publish v0.11.0 Release
 
 on:
   push:
@@ -10,17 +10,117 @@ on:
 permissions:
   contents: write
 
+concurrency:
+  group: publish-v0.11.0
+  cancel-in-progress: false
+
 jobs:
-  tag:
-    runs-on: ubuntu-latest
+  release:
+    name: Build and publish v0.11.0
+    runs-on: macos-15
+    timeout-minutes: 45
+    env:
+      APPLE_SIGNING_IDENTITY: '-'
+      RELEASE_TAG: v0.11.0
     steps:
-      - name: Create v0.11.0 tag on merged main commit
-        env:
-          GH_TOKEN: ${{ github.token }}
-          RELEASE_SHA: 3828ba0fa6171964b39c4ed0cc7b68321d57ac80
+      - name: Checkout release tag
+        uses: actions/checkout@v4
+        with:
+          ref: v0.11.0
+
+      - name: Validate release version
         shell: bash
         run: |
           set -euo pipefail
-          gh api --method POST "repos/${GITHUB_REPOSITORY}/git/refs" \
-            -f ref='refs/tags/v0.11.0' \
-            -f sha="${RELEASE_SHA}"
+          TAURI_VERSION="$(python3 - <<'PY'
+          import json
+          with open('src-tauri/tauri.conf.json', 'r', encoding='utf-8') as f:
+              print(json.load(f)['version'])
+          PY
+          )"
+          CARGO_VERSION="$(python3 - <<'PY'
+          import pathlib, re
+          text = pathlib.Path('src-tauri/Cargo.toml').read_text(encoding='utf-8')
+          package = text.split('[package]', 1)[1].split('[', 1)[0]
+          match = re.search(r'^version\s*=\s*"([^"]+)"', package, re.MULTILINE)
+          if not match:
+              raise SystemExit('Cannot find [package] version')
+          print(match.group(1))
+          PY
+          )"
+          [[ "${TAURI_VERSION}" == "0.11.0" ]]
+          [[ "${CARGO_VERSION}" == "0.11.0" ]]
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-darwin,x86_64-apple-darwin
+
+      - name: Cache Rust build
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: './src-tauri -> target'
+
+      - name: Install Tauri CLI
+        run: cargo install tauri-cli --version '^2' --locked
+
+      - name: Run static checks
+        run: ./scripts/static-check.sh
+
+      - name: Run Rust tests
+        working-directory: src-tauri
+        run: cargo test
+
+      - name: Build Universal macOS App and DMG
+        run: cargo tauri build --target universal-apple-darwin --bundles app,dmg
+
+      - name: Verify Universal binary
+        shell: bash
+        run: |
+          set -euo pipefail
+          APP_DIR="$(find src-tauri/target/universal-apple-darwin/release/bundle/macos -maxdepth 1 -name '*.app' -print -quit)"
+          [[ -n "${APP_DIR}" ]]
+          EXECUTABLE="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleExecutable' "${APP_DIR}/Contents/Info.plist")"
+          BIN="${APP_DIR}/Contents/MacOS/${EXECUTABLE}"
+          ARCHS="$(lipo -archs "${BIN}")"
+          echo "Architectures: ${ARCHS}"
+          [[ "${ARCHS}" == *"arm64"* ]]
+          [[ "${ARCHS}" == *"x86_64"* ]]
+
+      - name: Prepare release assets
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p release-assets
+          APP_DIR="$(find src-tauri/target/universal-apple-darwin/release/bundle/macos -maxdepth 1 -name '*.app' -print -quit)"
+          DMG_FILE="$(find src-tauri/target/universal-apple-darwin/release/bundle/dmg -maxdepth 1 -name '*.dmg' -print -quit)"
+          [[ -n "${APP_DIR}" ]]
+          [[ -n "${DMG_FILE}" ]]
+          APP_ZIP="release-assets/TcpLatency_Mac_${RELEASE_TAG}_universal.app.zip"
+          DMG_OUT="release-assets/TcpLatency_Mac_${RELEASE_TAG}_universal.dmg"
+          ditto -c -k --sequesterRsrc --keepParent "${APP_DIR}" "${APP_ZIP}"
+          cp "${DMG_FILE}" "${DMG_OUT}"
+          shasum -a 256 "${APP_ZIP}" "${DMG_OUT}" | tee release-assets/SHA256SUMS.txt
+          ls -lh release-assets
+
+      - name: Upload workflow artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: TcpLatency-Mac-universal-v0.11.0
+          path: release-assets/*
+          if-no-files-found: error
+
+      - name: Publish GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if gh release view "${RELEASE_TAG}" >/dev/null 2>&1; then
+            gh release upload "${RELEASE_TAG}" release-assets/* --clobber
+          else
+            gh release create "${RELEASE_TAG}" release-assets/* \
+              --target 3828ba0fa6171964b39c4ed0cc7b68321d57ac80 \
+              --title "TCP Latency ${RELEASE_TAG} — Network Cat 2.0" \
+              --generate-notes
+          fi
