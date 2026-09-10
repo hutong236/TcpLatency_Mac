@@ -38,7 +38,7 @@ test "$(wc -l < src-tauri/src/main.rs | tr -d ' ')" -le 180
 grep -q 'pub(crate) struct AppConfig' src-tauri/src/config.rs
 grep -q 'validate_config' src-tauri/src/config.rs
 grep -q 'endpoint_key' src-tauri/src/config.rs
-grep -q 'show_network_traffic' src-tauri/src/config.rs
+grep -q 'floating_show_traffic' src-tauri/src/config.rs
 grep -q 'traffic_interface' src-tauri/src/config.rs
 
 grep -q 'DNS_CACHE_TTL' src-tauri/src/probe.rs
