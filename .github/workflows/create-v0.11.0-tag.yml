@@ -1,0 +1,26 @@
+name: Create v0.11.0 Tag
+
+on:
+  push:
+    branches:
+      - feature/network-cat-2.0
+    paths:
+      - '.github/workflows/create-v0.11.0-tag.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  tag:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Create v0.11.0 tag on merged main commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_SHA: 3828ba0fa6171964b39c4ed0cc7b68321d57ac80
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh api --method POST "repos/${GITHUB_REPOSITORY}/git/refs" \
+            -f ref='refs/tags/v0.11.0' \
+            -f sha="${RELEASE_SHA}"
