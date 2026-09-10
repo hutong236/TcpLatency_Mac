@@ -63,21 +63,21 @@
   border-radius: 50%;
   background: var(--normal-dot);
   box-shadow: 0 0 6px rgba(0,0,0,.10);
-  opacity: .65;
+  --packet-opacity: .65;
+  opacity: 0;
   animation: catPacket var(--packet-cycle) linear infinite;
 }
 
 .cat-packet.p2 { animation-delay: -280ms; }
 .cat-packet.p3 { animation-delay: -560ms; }
 
+.cat-stage[data-traffic="0"] .cat-packet { --packet-opacity: .28; }
 .cat-stage[data-traffic="0"] .cat-packet.p2,
-.cat-stage[data-traffic="0"] .cat-packet.p3 { opacity: 0; }
-.cat-stage[data-traffic="0"] .cat-packet.p1 { opacity: .28; }
-.cat-stage[data-traffic="1"] .cat-packet.p3 { opacity: 0; }
-.cat-stage[data-traffic="1"] .cat-packet.p1,
-.cat-stage[data-traffic="1"] .cat-packet.p2 { opacity: .46; }
-.cat-stage[data-traffic="2"] .cat-packet { opacity: .68; }
-.cat-stage[data-traffic="3"] .cat-packet { opacity: .95; }
+.cat-stage[data-traffic="0"] .cat-packet.p3 { display: none; }
+.cat-stage[data-traffic="1"] .cat-packet { --packet-opacity: .46; }
+.cat-stage[data-traffic="1"] .cat-packet.p3 { display: none; }
+.cat-stage[data-traffic="2"] .cat-packet { --packet-opacity: .68; }
+.cat-stage[data-traffic="3"] .cat-packet { --packet-opacity: .95; width: 5px; height: 5px; }
 
 .warning .cat-packet { background: var(--warning); }
 .high .cat-packet { background: var(--high); }
@@ -135,8 +135,7 @@
 .cat-stage[data-state="refused"] .cat-packet,
 .cat-stage[data-state="dns_timeout"] .cat-packet,
 .cat-stage[data-state="dns_error"] .cat-packet {
-  animation-play-state: paused;
-  opacity: .18;
+  display: none;
 }
 
 /* Paused/disabled/starting/stale become calm idle states. */
@@ -159,7 +158,7 @@
 .cat-stage[data-state="disabled"] .cat-packet,
 .cat-stage[data-state="starting"] .cat-packet,
 .cat-stage[data-state="stale"] .cat-packet {
-  opacity: .2;
+  --packet-opacity: .20;
   animation-duration: 1800ms;
 }
 
@@ -221,10 +220,10 @@
 }
 
 @keyframes catPacket {
-  0% { transform: translateX(3px) scale(.72); opacity: 0; }
-  18% { opacity: .9; }
-  82% { opacity: .55; }
-  100% { transform: translateX(-18px) scale(1.05); opacity: 0; }
+  0% { transform: translateX(-18px) scale(.72); opacity: 0; }
+  18% { opacity: var(--packet-opacity); }
+  82% { opacity: var(--packet-opacity); }
+  100% { transform: translateX(3px) scale(1.05); opacity: 0; }
 }
 
 @keyframes catRest {
