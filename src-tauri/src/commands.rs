@@ -11,10 +11,56 @@ use crate::{
     },
     tray::refresh_tray_menu,
 };
-use std::sync::{atomic::Ordering, Arc};
+use serde::Serialize;
+use std::{fs, path::{Path, PathBuf}, sync::{atomic::Ordering, Arc}};
 use tauri::{AppHandle, Emitter, State};
 use tauri_plugin_autostart::ManagerExt;
 use tauri_plugin_notification::NotificationExt;
+
+const MAX_CAT_ASSET_BYTES: u64 = 8 * 1024 * 1024;
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct CatAsset {
+    mime_type: String,
+    file_name: String,
+    data: Vec<u8>,
+}
+
+fn cat_asset_mime(path: &Path) -> Option<&'static str> {
+    match path.extension()?.to_str()?.to_ascii_lowercase().as_str() {
+        "svg" => Some("image/svg+xml"),
+        "png" | "apng" => Some("image/png"),
+        "webp" => Some("image/webp"),
+        "gif" => Some("image/gif"),
+        _ => None,
+    }
+}
+
+fn cat_asset_store_dir() -> PathBuf {
+    dirs::config_dir()
+        .unwrap_or_else(|| PathBuf::from("."))
+        .join("TcpLatency")
+        .join("cat-assets")
+}
+
+fn safe_cat_asset_name(file_name: &str) -> Result<String, String> {
+    let name = Path::new(file_name.trim())
+        .file_name()
+        .and_then(|value| value.to_str())
+        .ok_or_else(|| "自定义网络猫素材文件名无效".to_string())?;
+    if name.is_empty() || name.len() > 180 {
+        return Err("自定义网络猫素材文件名无效".into());
+    }
+    if cat_asset_mime(Path::new(name)).is_none() {
+        return Err("自定义网络猫素材仅支持 SVG / PNG / APNG / WebP / GIF".into());
+    }
+    let sanitized: String = name
+        .chars()
+        .map(|ch| if ch.is_ascii_alphanumeric() || matches!(ch, '.' | '-' | '_') { ch } else { '_' })
+        .collect();
+    Ok(sanitized)
+}
 
 fn sync_autostart(app: &AppHandle, enabled: bool) -> Result<(), String> {
     let manager = app.autolaunch();
@@ -46,6 +92,47 @@ pub(crate) fn get_history(
     target_id: String,
 ) -> Vec<HistoryPoint> {
     history_for_target(state.inner().as_ref(), &target_id)
+}
+
+#[tauri::command]
+pub(crate) fn load_cat_asset(path: String) -> Result<CatAsset, String> {
+    let path = Path::new(path.trim());
+    let mime = cat_asset_mime(path)
+        .ok_or_else(|| "自定义网络猫素材仅支持 SVG / PNG / APNG / WebP / GIF".to_string())?;
+    let metadata = fs::metadata(path).map_err(|e| format!("读取自定义网络猫素材失败: {e}"))?;
+    if !metadata.is_file() {
+        return Err("自定义网络猫素材必须是普通文件".into());
+    }
+    if metadata.len() > MAX_CAT_ASSET_BYTES {
+        return Err("自定义网络猫素材不能超过 8MB".into());
+    }
+    let data = fs::read(path).map_err(|e| format!("读取自定义网络猫素材失败: {e}"))?;
+    let file_name = path
+        .file_name()
+        .and_then(|name| name.to_str())
+        .unwrap_or("custom-cat")
+        .to_string();
+    Ok(CatAsset {
+        mime_type: mime.into(),
+        file_name,
+        data,
+    })
+}
+
+#[tauri::command]
+pub(crate) fn save_cat_asset(file_name: String, data: Vec<u8>) -> Result<String, String> {
+    if data.is_empty() {
+        return Err("自定义网络猫素材为空".into());
+    }
+    if data.len() as u64 > MAX_CAT_ASSET_BYTES {
+        return Err("自定义网络猫素材不能超过 8MB".into());
+    }
+    let name = safe_cat_asset_name(&file_name)?;
+    let dir = cat_asset_store_dir();
+    fs::create_dir_all(&dir).map_err(|e| format!("创建网络猫素材目录失败: {e}"))?;
+    let path = dir.join(name);
+    fs::write(&path, data).map_err(|e| format!("保存网络猫素材失败: {e}"))?;
+    Ok(path.to_string_lossy().to_string())
 }
 
 #[tauri::command]

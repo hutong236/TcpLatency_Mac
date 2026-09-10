@@ -43,6 +43,8 @@ fn main() {
             commands::get_snapshot,
             commands::get_all_snapshots,
             commands::get_history,
+            commands::load_cat_asset,
+            commands::save_cat_asset,
             commands::test_target,
             commands::save_config,
             commands::set_paused,
