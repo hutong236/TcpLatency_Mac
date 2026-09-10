@@ -1,8 +1,8 @@
-/* Animated network cat: a purely presentational layer driven by existing
-   latency/traffic events. It never participates in probe timing or input. */
+/* Network Cat 2.0: lightweight visual network state layer. */
 .cat-stage {
   --cat-cycle: 520ms;
   --packet-cycle: 820ms;
+  --packet-opacity: .65;
   position: relative;
   z-index: 2;
   flex: 0 0 58px;
@@ -16,13 +16,22 @@
   transform: translateY(1px);
 }
 
-.cat-svg {
+.cat-stage[hidden] { display: none !important; }
+
+.cat-svg,
+.cat-custom-image {
   position: absolute;
   inset: 0 auto 0 0;
   width: 46px;
   height: 38px;
+  object-fit: contain;
   overflow: visible;
   filter: drop-shadow(0 1px 1px rgba(0,0,0,.08));
+}
+
+.cat-custom-image {
+  object-position: center;
+  border-radius: 7px;
 }
 
 .cat-body,
@@ -30,7 +39,9 @@
 .cat-tail,
 .cat-leg,
 .cat-ear,
-.cat-eye {
+.cat-eye,
+.cyber-core,
+.cyber-trace {
   transform-box: fill-box;
 }
 
@@ -54,6 +65,10 @@
   animation: catLegBack var(--cat-cycle) ease-in-out infinite;
 }
 
+.cat-custom-image {
+  animation: catCustomBob var(--cat-cycle) ease-in-out infinite;
+}
+
 .cat-packet {
   position: absolute;
   top: 17px;
@@ -63,7 +78,6 @@
   border-radius: 50%;
   background: var(--normal-dot);
   box-shadow: 0 0 6px rgba(0,0,0,.10);
-  --packet-opacity: .65;
   opacity: 0;
   animation: catPacket var(--packet-cycle) linear infinite;
 }
@@ -79,13 +93,102 @@
 .cat-stage[data-traffic="2"] .cat-packet { --packet-opacity: .68; }
 .cat-stage[data-traffic="3"] .cat-packet { --packet-opacity: .95; width: 5px; height: 5px; }
 
-.warning .cat-packet { background: var(--warning); }
+.cat-health {
+  position: absolute;
+  z-index: 4;
+  left: 2px;
+  bottom: -1px;
+  min-width: 14px;
+  height: 12px;
+  padding: 0 3px;
+  display: grid;
+  place-items: center;
+  border-radius: 999px;
+  background: rgba(var(--panel-rgb), .72);
+  border: 1px solid rgba(127,127,127,.18);
+  color: var(--secondary);
+  font: 700 8px/1 -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
+  letter-spacing: 0;
+  box-shadow: 0 1px 3px rgba(0,0,0,.06);
+}
+
+.cat-stage[data-health="excellent"] .cat-health,
+.cat-stage[data-health="good"] .cat-health { color: var(--normal-dot); }
+.cat-stage[data-health="busy"] .cat-health { color: #0a84ff; }
+.cat-stage[data-health="unstable"] .cat-health,
+.cat-stage[data-health="slow"] .cat-health { color: var(--warning); }
+.cat-stage[data-health="critical"] .cat-health,
+.cat-stage[data-health="offline"] .cat-health { color: var(--critical); }
+
+.warning .cat-packet,
+.cat-stage[data-health="unstable"] .cat-packet,
+.cat-stage[data-health="slow"] .cat-packet { background: var(--warning); }
 .high .cat-packet { background: var(--high); }
 .critical .cat-packet,
 .timeout .cat-packet,
 .offline .cat-packet,
 .refused .cat-packet,
-.dns-error .cat-packet { background: var(--critical); }
+.dns-error .cat-packet,
+.cat-stage[data-health="critical"] .cat-packet,
+.cat-stage[data-health="offline"] .cat-packet { background: var(--critical); }
+
+.cat-stage[data-health="busy"] .cat-packet {
+  background: #0a84ff;
+  box-shadow: 0 0 7px rgba(10,132,255,.26);
+}
+
+/* Default theme keeps the v0.10 silhouette but gains fused health feedback. */
+.cat-stage[data-theme="default"][data-health="excellent"] .cat-svg {
+  filter: drop-shadow(0 1px 1px rgba(0,0,0,.08)) drop-shadow(0 0 4px rgba(52,199,89,.12));
+}
+.cat-stage[data-theme="default"][data-health="unstable"] .cat-svg {
+  animation: catMicroShake 420ms ease-in-out infinite;
+}
+
+/* Pixel theme: crisp 8-bit shape and stepped movement. */
+.cat-stage[data-theme="pixel"] .cat-svg {
+  color: var(--primary);
+  image-rendering: pixelated;
+  filter: none;
+}
+.cat-stage[data-theme="pixel"] .cat-body,
+.cat-stage[data-theme="pixel"] .cat-head {
+  animation-timing-function: steps(2, end);
+}
+.cat-stage[data-theme="pixel"] .cat-tail,
+.cat-stage[data-theme="pixel"] .cat-leg {
+  animation-timing-function: steps(2, end);
+}
+.cat-stage[data-theme="pixel"] .cat-health {
+  border-radius: 2px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+/* Cyber theme: line-art cat with a pulsing network core and data trace. */
+.cat-stage[data-theme="cyber"] {
+  color: #0a84ff;
+}
+.cat-stage[data-theme="cyber"] .cat-cyber-svg {
+  filter: drop-shadow(0 0 3px rgba(10,132,255,.32));
+}
+.cat-stage[data-theme="cyber"] .cyber-trace {
+  stroke: currentColor;
+  stroke-width: 1.3;
+  stroke-dasharray: 3 3;
+  opacity: .6;
+  animation: cyberTrace 900ms linear infinite;
+}
+.cat-stage[data-theme="cyber"] .cyber-core {
+  fill: currentColor;
+  opacity: .8;
+  transform-origin: center;
+  animation: cyberCore 1.1s ease-in-out infinite;
+}
+.cat-stage[data-theme="cyber"] .cat-eye { fill: currentColor; }
+.cat-stage[data-theme="cyber"][data-health="unstable"],
+.cat-stage[data-theme="cyber"][data-health="slow"] { color: var(--warning); }
+.cat-stage[data-theme="cyber"][data-health="critical"],
+.cat-stage[data-theme="cyber"][data-health="offline"] { color: var(--critical); }
 
 /* High latency reads as effort rather than frantic motion. */
 .cat-stage[data-state="high"] .cat-body,
@@ -95,7 +198,7 @@
   animation-name: catHeavyStep;
 }
 
-/* Failures: the cat settles down and packets stop moving. */
+/* Failures: settle down and stop packets. */
 .cat-stage[data-state="timeout"],
 .cat-stage[data-state="offline"],
 .cat-stage[data-state="refused"],
@@ -130,13 +233,20 @@
   animation: catSleepTail 2.8s ease-in-out infinite;
 }
 
+.cat-stage[data-state="timeout"] .cat-custom-image,
+.cat-stage[data-state="offline"] .cat-custom-image,
+.cat-stage[data-state="refused"] .cat-custom-image,
+.cat-stage[data-state="dns_timeout"] .cat-custom-image,
+.cat-stage[data-state="dns_error"] .cat-custom-image {
+  animation: catRest 2.2s ease-in-out infinite;
+  filter: grayscale(.35) opacity(.78);
+}
+
 .cat-stage[data-state="timeout"] .cat-packet,
 .cat-stage[data-state="offline"] .cat-packet,
 .cat-stage[data-state="refused"] .cat-packet,
 .cat-stage[data-state="dns_timeout"] .cat-packet,
-.cat-stage[data-state="dns_error"] .cat-packet {
-  display: none;
-}
+.cat-stage[data-state="dns_error"] .cat-packet { display: none; }
 
 /* Paused/disabled/starting/stale become calm idle states. */
 .cat-stage[data-state="paused"] .cat-body,
@@ -162,18 +272,30 @@
   animation-duration: 1800ms;
 }
 
-/* Status strings can be wider than numeric RTT values. Keep the cat visible
-   but reduce its footprint so DNS Timeout / Disabled still fit compact HUDs. */
+/* User animation switch disables all built-in movement. Custom animated images
+   are frozen to a canvas snapshot by cat-floating.js. */
+.cat-stage.cat-static *,
+.cat-stage.cat-static::before,
+.cat-stage.cat-static::after {
+  animation: none !important;
+  transition: none !important;
+}
+.cat-stage.cat-static .cat-packet { opacity: .35; }
+
+/* Status strings can be wider than numeric RTT values. */
 .status-text .cat-stage {
   flex-basis: 42px;
   width: 42px;
   height: 32px;
   margin-right: 2px;
 }
-.status-text .cat-svg { width: 36px; height: 32px; }
+.status-text .cat-svg,
+.status-text .cat-custom-image { width: 36px; height: 32px; }
 .status-text .cat-packet { top: 14px; width: 3px; height: 3px; }
+.status-text .cat-health { transform: scale(.9); transform-origin: bottom left; }
 .size-compact.status-text .cat-stage { flex-basis: 32px; width: 32px; }
-.size-compact.status-text .cat-svg { width: 29px; }
+.size-compact.status-text .cat-svg,
+.size-compact.status-text .cat-custom-image { width: 29px; }
 
 .size-compact .cat-stage {
   flex-basis: 44px;
@@ -182,8 +304,10 @@
   margin-right: 2px;
   transform: translateY(2px);
 }
-.size-compact .cat-svg { width: 38px; height: 31px; }
+.size-compact .cat-svg,
+.size-compact .cat-custom-image { width: 38px; height: 31px; }
 .size-compact .cat-packet { top: 14px; width: 3px; height: 3px; }
+.size-compact .cat-health { left: 0; bottom: -2px; transform: scale(.88); transform-origin: bottom left; }
 
 .size-large .cat-stage {
   flex-basis: 66px;
@@ -191,12 +315,19 @@
   height: 43px;
   margin-right: 7px;
 }
-.size-large .cat-svg { width: 53px; height: 43px; }
+.size-large .cat-svg,
+.size-large .cat-custom-image { width: 53px; height: 43px; }
 .size-large .cat-packet { top: 19px; width: 5px; height: 5px; }
+.size-large .cat-health { height: 13px; font-size: 9px; }
 
 @keyframes catBob {
   0%, 100% { transform: translateY(1px); }
   50% { transform: translateY(-1.8px); }
+}
+
+@keyframes catCustomBob {
+  0%, 100% { transform: translateY(1px) scale(1); }
+  50% { transform: translateY(-1.2px) scale(1.01); }
 }
 
 @keyframes catHeavyStep {
@@ -239,6 +370,22 @@
 @keyframes catIdle {
   0%, 100% { transform: translateY(1px); }
   50% { transform: translateY(0); }
+}
+
+@keyframes catMicroShake {
+  0%, 100% { transform: translateX(0); }
+  35% { transform: translateX(-.8px); }
+  70% { transform: translateX(.8px); }
+}
+
+@keyframes cyberTrace {
+  from { stroke-dashoffset: 0; }
+  to { stroke-dashoffset: -12; }
+}
+
+@keyframes cyberCore {
+  0%, 100% { transform: scale(.82); opacity: .48; }
+  50% { transform: scale(1.18); opacity: 1; }
 }
 
 @media (prefers-reduced-motion: reduce) {
