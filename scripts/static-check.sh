@@ -8,6 +8,7 @@ if command -v node >/dev/null 2>&1; then
   node --check frontend/floating.js
   node --check frontend/traffic-settings.js
   node --check frontend/traffic-floating.js
+  node --check frontend/cat-floating.js
 else
   echo "WARN: node 不存在，跳过 JavaScript 语法检查"
 fi
@@ -109,6 +110,17 @@ grep -q -- '--pointer-x' frontend/floating.js
 grep -q -- '--glass-border-alpha' frontend/floating.css
 grep -q 'padding: 0;' frontend/floating.css
 grep -q 'config.uiVersion = 7' frontend/settings.js
+
+# Animated network cat HUD stays frontend-only and must be wired to both live feeds.
+test -f frontend/cat.css
+test -f frontend/cat-floating.js
+grep -q 'cat.css' frontend/index.html
+grep -q 'cat-floating.js' frontend/index.html
+grep -q 'id="networkCat"' frontend/index.html
+grep -q 'latency-update' frontend/cat-floating.js
+grep -q 'traffic-update' frontend/cat-floating.js
+grep -q 'catCycleForLatency' frontend/cat-floating.js
+grep -q 'prefers-reduced-motion' frontend/cat.css
 
 test -x script/build_and_run.sh
 test -f .codex/environments/environment.toml
