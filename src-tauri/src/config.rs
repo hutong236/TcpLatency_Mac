@@ -1,5 +1,5 @@
 use serde::{Deserialize, Serialize};
-use std::{collections::HashSet, fs, path::PathBuf};
+use std::{collections::HashSet, fs, path::{Path, PathBuf}};
 
 fn default_true() -> bool {
     true
@@ -33,6 +33,9 @@ fn default_floating_size() -> String {
 }
 fn default_traffic_interface() -> String {
     "auto".into()
+}
+fn default_network_cat_theme() -> String {
+    "default".into()
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -119,6 +122,14 @@ pub(crate) struct AppConfig {
     pub(crate) floating_show_traffic: bool,
     #[serde(default = "default_traffic_interface")]
     pub(crate) traffic_interface: String,
+    #[serde(default = "default_true")]
+    pub(crate) network_cat_enabled: bool,
+    #[serde(default = "default_true")]
+    pub(crate) network_cat_animation_enabled: bool,
+    #[serde(default = "default_network_cat_theme")]
+    pub(crate) network_cat_theme: String,
+    #[serde(default)]
+    pub(crate) network_cat_custom_asset: String,
     #[serde(default)]
     pub(crate) ui_version: u32,
 }
@@ -145,7 +156,11 @@ impl Default for AppConfig {
             floating_show_trend: false,
             floating_show_traffic: true,
             traffic_interface: default_traffic_interface(),
-            ui_version: 7,
+            network_cat_enabled: true,
+            network_cat_animation_enabled: true,
+            network_cat_theme: default_network_cat_theme(),
+            network_cat_custom_asset: String::new(),
+            ui_version: 8,
         }
     }
 }
@@ -184,8 +199,12 @@ pub(crate) fn migrate_config(mut config: AppConfig) -> AppConfig {
         config.floating_show_status_dot = true;
         config.floating_show_trend = false;
     }
-    if config.ui_version < 7 {
-        config.ui_version = 7;
+    if config.ui_version < 8 {
+        config.network_cat_enabled = true;
+        config.network_cat_animation_enabled = true;
+        config.network_cat_theme = default_network_cat_theme();
+        config.network_cat_custom_asset.clear();
+        config.ui_version = 8;
     }
     config
 }
@@ -195,7 +214,7 @@ pub(crate) fn load_config() -> AppConfig {
     match fs::read_to_string(path) {
         Ok(raw) => {
             let parsed: AppConfig = serde_json::from_str(&raw).unwrap_or_default();
-            let needs_migration = parsed.ui_version < 7;
+            let needs_migration = parsed.ui_version < 8;
             let validated = validate_config(migrate_config(parsed)).unwrap_or_default();
             if needs_migration {
                 let _ = persist_config(&validated);
@@ -230,6 +249,14 @@ fn valid_interface_name(name: &str) -> bool {
             && name
                 .chars()
                 .all(|ch| ch.is_ascii_alphanumeric() || matches!(ch, '-' | '_' | '.')))
+}
+
+fn supported_cat_asset(path: &str) -> bool {
+    Path::new(path)
+        .extension()
+        .and_then(|ext| ext.to_str())
+        .map(|ext| matches!(ext.to_ascii_lowercase().as_str(), "svg" | "png" | "apng" | "webp" | "gif"))
+        .unwrap_or(false)
 }
 
 pub(crate) fn validate_config(mut config: AppConfig) -> Result<AppConfig, String> {
@@ -307,7 +334,22 @@ pub(crate) fn validate_config(mut config: AppConfig) -> Result<AppConfig, String
         return Err("流量接口必须是 auto 或合法的 macOS 接口名（如 en0 / utun3）".into());
     }
 
-    config.ui_version = 7;
+    config.network_cat_theme = config.network_cat_theme.trim().to_ascii_lowercase();
+    if !matches!(config.network_cat_theme.as_str(), "default" | "pixel" | "cyber" | "custom") {
+        return Err("网络猫主题必须是 default / pixel / cyber / custom".into());
+    }
+    config.network_cat_custom_asset = config.network_cat_custom_asset.trim().to_string();
+    if config.network_cat_custom_asset.len() > 2048 {
+        return Err("自定义网络猫素材路径过长".into());
+    }
+    if !config.network_cat_custom_asset.is_empty() && !supported_cat_asset(&config.network_cat_custom_asset) {
+        return Err("自定义网络猫素材仅支持 SVG / PNG / APNG / WebP / GIF".into());
+    }
+    if config.network_cat_theme == "custom" && config.network_cat_custom_asset.is_empty() {
+        return Err("使用 Custom 主题时必须填写自定义素材路径".into());
+    }
+
+    config.ui_version = 8;
 
     Ok(config)
 }
@@ -340,7 +382,11 @@ mod tests {
         assert!(!config.floating_show_trend);
         assert!(config.floating_show_traffic);
         assert_eq!(config.traffic_interface, "auto");
-        assert_eq!(config.ui_version, 7);
+        assert!(config.network_cat_enabled);
+        assert!(config.network_cat_animation_enabled);
+        assert_eq!(config.network_cat_theme, "default");
+        assert!(config.network_cat_custom_asset.is_empty());
+        assert_eq!(config.ui_version, 8);
     }
 
     #[test]
@@ -367,6 +413,15 @@ mod tests {
     fn traffic_interface_validation_accepts_common_names() {
         let mut config = AppConfig::default();
         config.traffic_interface = "utun3".into();
+        assert!(validate_config(config).is_ok());
+    }
+
+    #[test]
+    fn custom_cat_requires_supported_asset() {
+        let mut config = AppConfig::default();
+        config.network_cat_theme = "custom".into();
+        assert!(validate_config(config.clone()).is_err());
+        config.network_cat_custom_asset = "/tmp/cat.webp".into();
         assert!(validate_config(config).is_ok());
     }
 }
