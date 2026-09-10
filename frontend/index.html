@@ -6,6 +6,7 @@
   <title>TCP Latency · Glass HUD</title>
   <link rel="stylesheet" href="floating.css" />
   <link rel="stylesheet" href="traffic.css" />
+  <link rel="stylesheet" href="cat.css" />
 </head>
 <body>
   <main
@@ -19,6 +20,21 @@
     <span id="statusDot" class="status-dot" aria-hidden="true"></span>
 
     <div class="latency-row" data-tauri-drag-region>
+      <span id="networkCat" class="cat-stage" data-state="starting" data-traffic="0" aria-hidden="true" data-tauri-drag-region>
+        <svg class="cat-svg" viewBox="0 0 72 44" focusable="false" aria-hidden="true">
+          <path class="cat-tail" d="M17 24 C7 22, 5 13, 12 9 C16 7, 18 11, 15 14 C12 16, 13 19, 19 19" fill="none" stroke="currentColor" stroke-width="4.2" stroke-linecap="round" />
+          <ellipse class="cat-body" cx="34" cy="24" rx="16" ry="9.5" fill="currentColor" opacity=".92" />
+          <circle class="cat-head" cx="51" cy="18" r="8.5" fill="currentColor" />
+          <path class="cat-ear" d="M45 13 L46.5 6.5 L51 11.5 Z" fill="currentColor" />
+          <path class="cat-ear" d="M52 11.3 L57 7 L58.5 14 Z" fill="currentColor" />
+          <circle class="cat-eye" cx="54.4" cy="17.2" r="1" fill="rgba(255,255,255,.88)" />
+          <path class="cat-leg back" d="M27 29 L23 37" fill="none" stroke="currentColor" stroke-width="3.6" stroke-linecap="round" />
+          <path class="cat-leg front" d="M39 29 L44 36" fill="none" stroke="currentColor" stroke-width="3.6" stroke-linecap="round" />
+        </svg>
+        <i class="cat-packet p1"></i>
+        <i class="cat-packet p2"></i>
+        <i class="cat-packet p3"></i>
+      </span>
       <span id="latency" class="latency-value" data-tauri-drag-region>--</span>
       <span id="unit" class="latency-unit" data-tauri-drag-region>ms</span>
       <span id="trend" class="trend" data-tauri-drag-region aria-hidden="true"></span>
@@ -39,5 +55,6 @@
   </main>
   <script src="floating.js"></script>
   <script src="traffic-floating.js"></script>
+  <script src="cat-floating.js"></script>
 </body>
 </html>
