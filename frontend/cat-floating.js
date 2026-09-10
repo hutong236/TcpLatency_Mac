@@ -3,6 +3,7 @@ const catStageEl = document.getElementById('networkCat');
 let catConfig = null;
 let lastCatState = '';
 let lastTrafficLevel = -1;
+let latestCatSnapshot = null;
 
 function catStateForSnapshot(snapshot) {
   if (!snapshot) return 'starting';
@@ -31,6 +32,7 @@ function catCycleForLatency(ms) {
 
 function applyCatSnapshot(snapshot) {
   if (!catStageEl) return;
+  latestCatSnapshot = snapshot;
   const state = catStateForSnapshot(snapshot);
   if (state !== lastCatState) {
     catStageEl.dataset.state = state;
@@ -75,6 +77,7 @@ async function bootNetworkCat() {
   await listen('traffic-update', event => applyCatTraffic(event.payload));
   await listen('config-update', event => {
     catConfig = event.payload;
+    if (latestCatSnapshot) applyCatSnapshot(latestCatSnapshot);
   });
 }
 
