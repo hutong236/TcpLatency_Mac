@@ -9,6 +9,7 @@ on:
 
 permissions:
   contents: write
+  actions: write
 
 jobs:
   retag:
@@ -28,3 +29,11 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git tag -fa v0.9.0 "$TARGET_SHA" -m "TCP Latency v0.9.0 - live network traffic HUD"
           git push --force origin refs/tags/v0.9.0
+
+      - name: Dispatch macOS release workflow on v0.9.0
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh workflow run release-macos.yml --ref v0.9.0
