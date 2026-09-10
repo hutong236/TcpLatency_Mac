@@ -6,6 +6,8 @@ cd "$ROOT"
 if command -v node >/dev/null 2>&1; then
   node --check frontend/settings.js
   node --check frontend/floating.js
+  node --check frontend/traffic-settings.js
+  node --check frontend/traffic-floating.js
 else
   echo "WARN: node 不存在，跳过 JavaScript 语法检查"
 fi
@@ -17,17 +19,17 @@ if command -v python3 >/dev/null 2>&1; then
 import tomllib
 with open("src-tauri/Cargo.toml", "rb") as f:
     cargo = tomllib.load(f)
-assert cargo["package"]["version"] == "0.8.1"
+assert cargo["package"]["version"] == "0.9.0"
 PYTOML
 else
   echo "WARN: python3 不存在，跳过 JSON/TOML 语法检查"
 fi
 
-grep -q '"version": "0.8.1"' src-tauri/tauri.conf.json
+grep -q '"version": "0.9.0"' src-tauri/tauri.conf.json
 grep -q '"shadow": false' src-tauri/tauri.conf.json
 
 # Backend module boundaries: main.rs should only assemble the application.
-for module in config probe runtime macos_window tray commands; do
+for module in config probe runtime macos_window tray commands traffic; do
   test -f "src-tauri/src/${module}.rs"
   grep -q "mod ${module};" src-tauri/src/main.rs
 done
@@ -36,6 +38,8 @@ test "$(wc -l < src-tauri/src/main.rs | tr -d ' ')" -le 180
 grep -q 'pub(crate) struct AppConfig' src-tauri/src/config.rs
 grep -q 'validate_config' src-tauri/src/config.rs
 grep -q 'endpoint_key' src-tauri/src/config.rs
+grep -q 'show_network_traffic' src-tauri/src/config.rs
+grep -q 'traffic_interface' src-tauri/src/config.rs
 
 grep -q 'DNS_CACHE_TTL' src-tauri/src/probe.rs
 grep -q 'DNS_CACHE_MAX_ENTRIES' src-tauri/src/probe.rs
@@ -50,6 +54,10 @@ grep -q 'p95_ms' src-tauri/src/runtime.rs
 grep -q 'sample_age_ms' src-tauri/src/runtime.rs
 ! grep -q 'SCHEDULER_TICK_MS' src-tauri/src/runtime.rs
 ! grep -q 'sleep(Duration::from_millis(250))' src-tauri/src/runtime.rs
+
+grep -q 'traffic_sampler' src-tauri/src/traffic.rs
+grep -q 'traffic-update' src-tauri/src/traffic.rs
+grep -q 'getifaddrs' src-tauri/src/traffic.rs
 
 grep -q 'set_ignore_cursor_events' src-tauri/src/macos_window.rs
 grep -q 'Effect::UnderWindowBackground' src-tauri/src/macos_window.rs
@@ -89,6 +97,8 @@ grep -q 'requestAnimationFrame' frontend/settings.js
 grep -q 'restartAnimationClass' frontend/floating.js
 grep -q 'latestSnapshot' frontend/floating.js
 ! grep -q 'offsetWidth' frontend/floating.js
+grep -q 'traffic-update' frontend/traffic-floating.js
+grep -q 'trafficInterface' frontend/traffic-settings.js
 grep -q 'prefers-color-scheme: dark' frontend/floating.css
 grep -q 'font-variant-numeric: tabular-nums' frontend/floating.css
 grep -q 'status-dot' frontend/floating.css
@@ -102,6 +112,6 @@ grep -q 'config.uiVersion = 7' frontend/settings.js
 
 test -x script/build_and_run.sh
 test -f .codex/environments/environment.toml
-test -f CHANGELOG_V0.8.1.md
+test -f CHANGELOG_V0.9.0.md
 
 echo "Static checks passed."
