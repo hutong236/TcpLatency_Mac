@@ -87,10 +87,24 @@ function formatAge(ms) {
   return `${Math.round(ms / 60000)}m`;
 }
 
+function normalizedFloatingBackgroundMode(mode) {
+  return ['glass', 'transparent', 'solid'].includes(mode) ? mode : 'glass';
+}
+
 function updateFloatingRangeLabels() {
-  const opacity = Number($('floatingOpacity')?.value ?? config?.floatingOpacity ?? 0.82);
+  const opacityInput = $('floatingOpacity');
+  const opacity = Number(opacityInput?.value ?? config?.floatingOpacity ?? 0.82);
   const fontSize = Number($('floatingFontSize')?.value ?? config?.floatingFontSize ?? 42);
-  if ($('floatingOpacityValue')) $('floatingOpacityValue').textContent = `${Math.round(opacity * 100)}%`;
+  const backgroundMode = normalizedFloatingBackgroundMode(
+    $('floatingBackgroundMode')?.value ?? config?.floatingBackgroundMode,
+  );
+
+  if (opacityInput) opacityInput.disabled = backgroundMode === 'transparent';
+  if ($('floatingOpacityValue')) {
+    $('floatingOpacityValue').textContent = backgroundMode === 'transparent'
+      ? '纯透明'
+      : `${Math.round(opacity * 100)}%`;
+  }
   if ($('floatingFontSizeValue')) $('floatingFontSizeValue').textContent = `${fontSize}px`;
 }
 
@@ -130,6 +144,7 @@ function renderConfig() {
   $('floatingShowTarget').checked = config.floatingShowTarget !== false;
   $('floatingShowStatusDot').checked = config.floatingShowStatusDot !== false;
   $('floatingShowTrend').checked = config.floatingShowTrend === true;
+  $('floatingBackgroundMode').value = normalizedFloatingBackgroundMode(config.floatingBackgroundMode);
   $('floatingSize').value = config.floatingSize || 'standard';
   $('floatingOpacity').value = config.floatingOpacity ?? 0.82;
   $('floatingFontSize').value = config.floatingFontSize ?? 42;
@@ -407,6 +422,7 @@ async function boot() {
   for (const id of ['floatingOpacity', 'floatingFontSize']) {
     $(id).addEventListener('input', updateFloatingRangeLabels);
   }
+  $('floatingBackgroundMode').addEventListener('change', updateFloatingRangeLabels);
 
   $('save').addEventListener('click', () => save(true, true));
 
@@ -450,10 +466,11 @@ async function save(showSuccess = true, updateForm = true) {
   config.floatingShowTarget = $('floatingShowTarget').checked;
   config.floatingShowStatusDot = $('floatingShowStatusDot').checked;
   config.floatingShowTrend = $('floatingShowTrend').checked;
+  config.floatingBackgroundMode = normalizedFloatingBackgroundMode($('floatingBackgroundMode').value);
   config.floatingSize = $('floatingSize').value;
   config.floatingOpacity = Number($('floatingOpacity').value);
   config.floatingFontSize = Number($('floatingFontSize').value);
-  config.uiVersion = 7;
+  config.uiVersion = 8;
   config.autostart = $('autostart').checked;
   config.notificationsEnabled = $('notificationsEnabled').checked;
   config.notifyRecovery = $('notifyRecovery').checked;
