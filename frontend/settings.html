@@ -109,7 +109,14 @@
       <label class="toggle-row"><span><b>显示目标名称</b><small>第二行显示当前主目标；长名称自动省略，不改变窗体宽度</small></span><input id="floatingShowTarget" type="checkbox" /></label>
       <label class="toggle-row"><span><b>状态点</b><small>右上角使用很小的系统状态色提示，卡片背景始终保持中性</small></span><input id="floatingShowStatusDot" type="checkbox" /></label>
       <label class="toggle-row"><span><b>延迟趋势箭头</b><small>可选显示 ↑ / ↓；默认关闭以保持 Apple 风格的极简视觉</small></span><input id="floatingShowTrend" type="checkbox" /></label>
-      <div class="grid three compact-grid">
+      <div class="grid two compact-grid">
+        <label>背景样式
+          <select id="floatingBackgroundMode">
+            <option value="glass">毛玻璃 · 推荐</option>
+            <option value="transparent">纯透明 · 仅保留内容</option>
+            <option value="solid">实体背景 · 高对比度</option>
+          </select>
+        </label>
         <label>窗体尺寸
           <select id="floatingSize">
             <option value="compact">Compact · 178×76</option>
@@ -117,10 +124,10 @@
             <option value="large">Large · 268×116</option>
           </select>
         </label>
-        <label>毛玻璃透明度<input id="floatingOpacity" type="range" min="0.70" max="1" step="0.05" /><span id="floatingOpacityValue" class="range-value">82%</span></label>
+        <label>背景强度<input id="floatingOpacity" type="range" min="0.70" max="1" step="0.05" /><span id="floatingOpacityValue" class="range-value">82%</span></label>
         <label>延迟字体大小<input id="floatingFontSize" type="range" min="30" max="52" step="1" /><span id="floatingFontSizeValue" class="range-value">42px</span></label>
       </div>
-      <p class="hint">V0.9.0 默认使用 Standard：228×100 原生透明窗口，在延时下方以第二视觉层级显示实时上下行流量；异常仍只改变延时数字与小状态点。</p>
+      <p class="hint">毛玻璃使用 macOS 原生 UnderWindowBackground；纯透明会同时关闭原生磨砂与 CSS 卡片层，仅保留小猫、延时、流量和目标文字；实体背景用于复杂桌面下提高可读性。</p>
       <label class="toggle-row"><span><b>登录时自动启动</b><small>使用 macOS LaunchAgent</small></span><input id="autostart" type="checkbox" /></label>
       <label class="toggle-row"><span><b>暂停全部检测</b><small>保留程序运行，但停止所有目标的 TCP 探测</small></span><input id="paused" type="checkbox" /></label>
     </section>
