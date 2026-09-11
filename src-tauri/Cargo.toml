@@ -1,6 +1,6 @@
 [package]
 name = "tcp-latency"
-version = "0.11.0"
+version = "0.12.0"
 description = "A lightweight macOS TCP latency and live network traffic monitor with native frosted-glass HUD"
 authors = ["hutong"]
 edition = "2021"
