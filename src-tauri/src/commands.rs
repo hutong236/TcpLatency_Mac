@@ -176,7 +176,11 @@ pub(crate) fn save_config(
     state.scheduler_notify.notify_one();
 
     apply_floating_window_size(&app, &config.floating_size)?;
-    apply_floating_window_effect(&app, &config.floating_size)?;
+    apply_floating_window_effect(
+        &app,
+        &config.floating_size,
+        &config.floating_background_mode,
+    )?;
     set_floating_visibility(&app, config.show_floating);
     set_mouse_passthrough_native(&app, config.mouse_passthrough)?;
     refresh_tray_menu(&app, state.inner());
