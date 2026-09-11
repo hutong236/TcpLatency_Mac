@@ -20,13 +20,13 @@ if command -v python3 >/dev/null 2>&1; then
 import tomllib
 with open("src-tauri/Cargo.toml", "rb") as f:
     cargo = tomllib.load(f)
-assert cargo["package"]["version"] == "0.11.0"
+assert cargo["package"]["version"] == "0.12.0"
 PYTOML
 else
   echo "WARN: python3 不存在，跳过 JSON/TOML 语法检查"
 fi
 
-grep -q '"version": "0.11.0"' src-tauri/tauri.conf.json
+grep -q '"version": "0.12.0"' src-tauri/tauri.conf.json
 grep -q '"shadow": false' src-tauri/tauri.conf.json
 
 # Backend module boundaries: main.rs should only assemble the application.
