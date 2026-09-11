@@ -124,24 +124,38 @@ fn floating_effect_radius(size: &str) -> f64 {
 }
 
 #[cfg(target_os = "macos")]
-pub(crate) fn apply_floating_window_effect(app: &AppHandle, size: &str) -> Result<(), String> {
+pub(crate) fn apply_floating_window_effect(
+    app: &AppHandle,
+    size: &str,
+    background_mode: &str,
+) -> Result<(), String> {
     let Some(window) = app.get_webview_window("main") else {
         return Err("未找到悬浮窗口".into());
     };
 
-    window
-        .set_effects(
+    let effects = if background_mode == "glass" {
+        Some(
             EffectsBuilder::new()
                 .effect(Effect::UnderWindowBackground)
                 .state(EffectState::Active)
                 .radius(floating_effect_radius(size))
                 .build(),
         )
-        .map_err(|e| format!("设置 macOS 磨砂玻璃效果失败: {e}"))
+    } else {
+        None
+    };
+
+    window
+        .set_effects(effects)
+        .map_err(|e| format!("设置 macOS 悬浮窗背景效果失败: {e}"))
 }
 
 #[cfg(not(target_os = "macos"))]
-pub(crate) fn apply_floating_window_effect(_app: &AppHandle, _size: &str) -> Result<(), String> {
+pub(crate) fn apply_floating_window_effect(
+    _app: &AppHandle,
+    _size: &str,
+    _background_mode: &str,
+) -> Result<(), String> {
     Ok(())
 }
 

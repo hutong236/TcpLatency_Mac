@@ -23,6 +23,8 @@
   --glass-alpha: 0.40;
   --glass-alpha-soft: 0.17;
   --glass-alpha-end: 0.17;
+  --solid-alpha: 0.95;
+  --solid-alpha-soft: 0.92;
   --sheen-primary-alpha: 0.42;
   --sheen-secondary-alpha: 0.14;
   --pointer-primary-alpha: 0.28;
@@ -120,6 +122,47 @@ body {
 body.tauri-runtime .floating {
   backdrop-filter: saturate(150%) contrast(1.015);
   -webkit-backdrop-filter: saturate(150%) contrast(1.015);
+}
+
+/* Pure transparent mode clears the native AppKit material in Rust and removes
+   every CSS panel layer. Only the content remains on the desktop. */
+.floating.background-transparent,
+body.tauri-runtime .floating.background-transparent {
+  background: transparent;
+  border-color: transparent;
+  box-shadow: none;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+
+.floating.background-transparent::before,
+.floating.background-transparent::after {
+  display: none;
+}
+
+.floating.background-transparent:hover {
+  box-shadow: none;
+}
+
+.floating.background-transparent:active {
+  filter: none;
+}
+
+/* Solid mode intentionally clears the native blur and uses an almost opaque
+   adaptive system-colored surface for maximum readability. */
+.floating.background-solid,
+body.tauri-runtime .floating.background-solid {
+  background:
+    linear-gradient(145deg,
+      rgba(var(--panel-rgb), var(--solid-alpha)),
+      rgba(var(--panel-rgb), var(--solid-alpha-soft))
+    );
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+
+.floating.background-solid::before {
+  opacity: .34;
 }
 
 body.is-ready .floating {

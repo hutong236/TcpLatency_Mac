@@ -82,7 +82,11 @@ fn main() {
             configure_native_settings_window(app.handle())
                 .map_err(|e| format!("初始化 macOS 设置窗口失败: {e}"))?;
             let _ = apply_floating_window_size(app.handle(), &config.floating_size);
-            let _ = apply_floating_window_effect(app.handle(), &config.floating_size);
+            let _ = apply_floating_window_effect(
+                app.handle(),
+                &config.floating_size,
+                &config.floating_background_mode,
+            );
             set_floating_visibility(app.handle(), config.show_floating);
             let _ = set_mouse_passthrough_native(app.handle(), config.mouse_passthrough);
 

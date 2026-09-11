@@ -232,7 +232,7 @@ async function bootTrafficSettings() {
   installTrafficControls();
   installCatControls();
   const eyebrow = document.querySelector('.eyebrow');
-  if (eyebrow) eyebrow.textContent = 'TCP LATENCY · V0.11.0';
+  if (eyebrow) eyebrow.textContent = 'TCP LATENCY · V0.12.0';
   const initialConfig = await invoke('get_config');
   renderTrafficControls(initialConfig);
   renderCatControls(initialConfig);
