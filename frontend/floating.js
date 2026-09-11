@@ -48,26 +48,37 @@ function normalizedSize(size) {
   return ['compact', 'standard', 'large'].includes(size) ? size : 'standard';
 }
 
+function normalizedBackgroundMode(mode) {
+  return ['glass', 'transparent', 'solid'].includes(mode) ? mode : 'glass';
+}
+
 function applyFloatingPreferences() {
   if (!config) return;
 
   const opacity = Number(config.floatingOpacity ?? 0.82);
   const fontSize = Number(config.floatingFontSize ?? 42);
   const size = normalizedSize(config.floatingSize);
+  const backgroundMode = normalizedBackgroundMode(config.floatingBackgroundMode);
 
   const normalizedOpacity = Math.max(0.70, Math.min(1, opacity));
   const scale = normalizedOpacity / 0.82;
-  const clampAlpha = value => Math.max(0.04, Math.min(0.92, value));
+  const clampAlpha = value => Math.max(0.04, Math.min(0.98, value));
+  const solidProgress = (normalizedOpacity - 0.70) / 0.30;
+  const solidAlpha = 0.90 + (0.08 * solidProgress);
+  const solidAlphaSoft = Math.max(0.88, solidAlpha - 0.025);
+
   floatingEl.style.setProperty('--floating-opacity', String(normalizedOpacity));
   floatingEl.style.setProperty('--glass-alpha', clampAlpha(0.40 * scale).toFixed(3));
   floatingEl.style.setProperty('--glass-alpha-soft', clampAlpha(0.17 * scale).toFixed(3));
   floatingEl.style.setProperty('--glass-alpha-end', clampAlpha(0.17 * scale).toFixed(3));
   floatingEl.style.setProperty('--glass-border-alpha', clampAlpha(0.62 * scale).toFixed(3));
+  floatingEl.style.setProperty('--solid-alpha', solidAlpha.toFixed(3));
+  floatingEl.style.setProperty('--solid-alpha-soft', solidAlphaSoft.toFixed(3));
   floatingEl.style.setProperty('--sheen-primary-alpha', clampAlpha(0.42 * scale).toFixed(3));
   floatingEl.style.setProperty('--sheen-secondary-alpha', clampAlpha(0.14 * scale).toFixed(3));
   floatingEl.style.setProperty('--pointer-primary-alpha', clampAlpha(0.28 * scale).toFixed(3));
   floatingEl.style.setProperty('--pointer-secondary-alpha', clampAlpha(0.08 * scale).toFixed(3));
-  if (config.mousePassthrough) floatingEl.classList.remove('is-hovered');
+  if (config.mousePassthrough || backgroundMode === 'transparent') floatingEl.classList.remove('is-hovered');
   floatingEl.style.setProperty('--floating-font-size', `${Math.max(30, Math.min(52, fontSize))}px`);
 
   floatingEl.classList.toggle('hide-target', config.floatingShowTarget === false);
@@ -76,6 +87,8 @@ function applyFloatingPreferences() {
 
   floatingEl.classList.remove('size-compact', 'size-standard', 'size-large');
   floatingEl.classList.add(`size-${size}`);
+  floatingEl.classList.remove('background-glass', 'background-transparent', 'background-solid');
+  floatingEl.classList.add(`background-${backgroundMode}`);
 }
 
 function setValue(value, unit = '', trend = '') {
@@ -97,6 +110,7 @@ function setVisualState(...states) {
 
   const preserved = [...floatingEl.classList].filter(name =>
     name.startsWith('size-') ||
+    name.startsWith('background-') ||
     name === 'hide-target' ||
     name === 'hide-status-dot' ||
     name === 'hide-trend' ||
@@ -211,13 +225,15 @@ async function boot() {
   });
 
   floatingEl.addEventListener('pointerenter', () => {
-    if (!config?.mousePassthrough) floatingEl.classList.add('is-hovered');
+    if (!config?.mousePassthrough && normalizedBackgroundMode(config?.floatingBackgroundMode) !== 'transparent') {
+      floatingEl.classList.add('is-hovered');
+    }
   });
 
   let pointerFrame = 0;
   let pendingPointer = null;
   floatingEl.addEventListener('pointermove', event => {
-    if (config?.mousePassthrough) return;
+    if (config?.mousePassthrough || normalizedBackgroundMode(config?.floatingBackgroundMode) === 'transparent') return;
     pendingPointer = { x: event.clientX, y: event.clientY };
     if (pointerFrame) return;
     pointerFrame = requestAnimationFrame(() => {
