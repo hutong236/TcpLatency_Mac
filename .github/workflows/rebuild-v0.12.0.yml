@@ -19,4 +19,4 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         shell: bash
-        run: gh workflow run release-macos.yml --ref main -f release_tag=v0.12.0
+        run: gh workflow run release-macos.yml --repo hutong236/TcpLatency_Mac --ref main -f release_tag=v0.12.0
