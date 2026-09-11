@@ -5,12 +5,17 @@ on:
     tags:
       - 'v*'
   workflow_dispatch:
+    inputs:
+      release_tag:
+        description: 'Optional existing tag to rebuild/publish, e.g. v0.12.0'
+        required: false
+        type: string
 
 permissions:
   contents: write
 
 concurrency:
-  group: macos-release-${{ github.ref }}
+  group: macos-release-${{ inputs.release_tag || github.ref }}
   cancel-in-progress: false
 
 jobs:
@@ -27,14 +32,20 @@ jobs:
     steps:
       - name: Checkout source
         uses: actions/checkout@v4
+        with:
+          # For a manual recovery run, build the exact tagged source while using
+          # this workflow definition from the default branch.
+          ref: ${{ inputs.release_tag || github.ref }}
 
-      - name: Validate tag version
-        if: startsWith(github.ref, 'refs/tags/')
+      - name: Validate release version
+        if: startsWith(github.ref, 'refs/tags/') || inputs.release_tag != ''
+        env:
+          RELEASE_TAG: ${{ inputs.release_tag || github.ref_name }}
         shell: bash
         run: |
           set -euo pipefail
 
-          TAG_VERSION="${GITHUB_REF_NAME#v}"
+          TAG_VERSION="${RELEASE_TAG#v}"
 
           TAURI_VERSION="$(python3 - <<'PY'
           import json
@@ -56,12 +67,13 @@ jobs:
           PY
           )"
 
+          echo "Release tag:   ${RELEASE_TAG}"
           echo "Tag version:   ${TAG_VERSION}"
           echo "Tauri version: ${TAURI_VERSION}"
           echo "Cargo version: ${CARGO_VERSION}"
 
           if [[ "${TAG_VERSION}" != "${TAURI_VERSION}" || "${TAG_VERSION}" != "${CARGO_VERSION}" ]]; then
-            echo "::error::Version mismatch. Before tagging, set src-tauri/tauri.conf.json and src-tauri/Cargo.toml to ${TAG_VERSION}."
+            echo "::error::Version mismatch. Tag ${RELEASE_TAG} must match src-tauri/tauri.conf.json and src-tauri/Cargo.toml."
             exit 1
           fi
 
@@ -82,8 +94,12 @@ jobs:
         working-directory: src-tauri
         run: cargo test
 
-      - name: Build Universal macOS App and DMG
-        run: cargo tauri build --target universal-apple-darwin --bundles app,dmg
+      - name: Build Universal macOS App
+        # Tauri's generated bundle_dmg.sh is intentionally bypassed here. It can
+        # fail or hang in headless macOS runners around diskimages-helper even
+        # after the .app has built successfully. Build the signed app first and
+        # create the simple distributable DMG with hdiutil in a separate step.
+        run: cargo tauri build --target universal-apple-darwin --bundles app
 
       - name: Verify Universal binary
         shell: bash
@@ -111,7 +127,11 @@ jobs:
             exit 1
           fi
 
+          codesign --verify --deep --strict --verbose=2 "${APP_DIR}"
+
       - name: Prepare release assets
+        env:
+          RELEASE_TAG: ${{ inputs.release_tag || github.ref_name }}
         shell: bash
         run: |
           set -euo pipefail
@@ -119,26 +139,55 @@ jobs:
           mkdir -p release-assets
 
           APP_DIR="$(find src-tauri/target/universal-apple-darwin/release/bundle/macos -maxdepth 1 -name '*.app' -print -quit)"
-          DMG_FILE="$(find src-tauri/target/universal-apple-darwin/release/bundle/dmg -maxdepth 1 -name '*.dmg' -print -quit)"
-
           if [[ -z "${APP_DIR}" ]]; then
             echo "::error::No .app bundle found"
             exit 1
           fi
 
-          if [[ -z "${DMG_FILE}" ]]; then
-            echo "::error::No .dmg bundle found"
+          RELEASE_VERSION="${RELEASE_TAG:-manual}"
+          APP_ZIP="release-assets/TcpLatency_Mac_${RELEASE_VERSION}_universal.app.zip"
+          DMG_OUT="release-assets/TcpLatency_Mac_${RELEASE_VERSION}_universal.dmg"
+          DMG_STAGE="$(mktemp -d "${RUNNER_TEMP}/tcplatency-dmg.XXXXXX")"
+
+          cleanup() {
+            hdiutil detach '/Volumes/TCP Latency' -force >/dev/null 2>&1 || true
+            rm -rf "${DMG_STAGE}"
+          }
+          trap cleanup EXIT
+
+          # ditto preserves macOS bundle metadata/resource forks better than generic zip/cp.
+          ditto -c -k --sequesterRsrc --keepParent "${APP_DIR}" "${APP_ZIP}"
+          ditto "${APP_DIR}" "${DMG_STAGE}/TCP Latency.app"
+          ln -s /Applications "${DMG_STAGE}/Applications"
+
+          # A plain hdiutil-created UDZO image is less decorative than Tauri's
+          # Finder-layout DMG, but much more reliable on headless CI runners.
+          # Retry transient DiskImages framework failures and always verify the result.
+          created=false
+          for attempt in 1 2 3; do
+            echo "Creating DMG (attempt ${attempt}/3)..."
+            hdiutil detach '/Volumes/TCP Latency' -force >/dev/null 2>&1 || true
+            rm -f "${DMG_OUT}"
+
+            if hdiutil create \
+              -volname 'TCP Latency' \
+              -srcfolder "${DMG_STAGE}" \
+              -ov \
+              -format UDZO \
+              "${DMG_OUT}"; then
+              created=true
+              break
+            fi
+
+            sleep $((attempt * 3))
+          done
+
+          if [[ "${created}" != true || ! -s "${DMG_OUT}" ]]; then
+            echo "::error::Failed to create DMG after 3 attempts"
             exit 1
           fi
 
-          RELEASE_VERSION="${GITHUB_REF_NAME:-manual}"
-          APP_ZIP="release-assets/TcpLatency_Mac_${RELEASE_VERSION}_universal.app.zip"
-          DMG_OUT="release-assets/TcpLatency_Mac_${RELEASE_VERSION}_universal.dmg"
-
-          # ditto preserves macOS bundle metadata/resource forks better than generic zip.
-          ditto -c -k --sequesterRsrc --keepParent "${APP_DIR}" "${APP_ZIP}"
-          cp "${DMG_FILE}" "${DMG_OUT}"
-
+          hdiutil verify "${DMG_OUT}"
           shasum -a 256 "${APP_ZIP}" "${DMG_OUT}" | tee release-assets/SHA256SUMS.txt
 
           echo 'Release assets:'
@@ -147,19 +196,25 @@ jobs:
       - name: Upload workflow artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: TcpLatency-Mac-universal-${{ github.ref_name }}
+          name: TcpLatency-Mac-universal-${{ inputs.release_tag || github.ref_name }}
           path: release-assets/*
           if-no-files-found: error
 
       - name: Publish GitHub Release
-        if: startsWith(github.ref, 'refs/tags/')
+        if: startsWith(github.ref, 'refs/tags/') || inputs.release_tag != ''
         env:
           GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ inputs.release_tag || github.ref_name }}
         shell: bash
         run: |
           set -euo pipefail
 
-          gh release create "${GITHUB_REF_NAME}" \
-            release-assets/* \
-            --title "TCP Latency ${GITHUB_REF_NAME}" \
-            --generate-notes
+          if gh release view "${RELEASE_TAG}" >/dev/null 2>&1; then
+            echo "Release ${RELEASE_TAG} already exists; replacing assets."
+            gh release upload "${RELEASE_TAG}" release-assets/* --clobber
+          else
+            gh release create "${RELEASE_TAG}" \
+              release-assets/* \
+              --title "TCP Latency ${RELEASE_TAG}" \
+              --generate-notes
+          fi
