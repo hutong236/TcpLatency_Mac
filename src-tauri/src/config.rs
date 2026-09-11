@@ -31,6 +31,9 @@ fn default_floating_font_size() -> u32 {
 fn default_floating_size() -> String {
     "standard".into()
 }
+fn default_floating_background_mode() -> String {
+    "glass".into()
+}
 fn default_traffic_interface() -> String {
     "auto".into()
 }
@@ -114,6 +117,8 @@ pub(crate) struct AppConfig {
     pub(crate) floating_font_size: u32,
     #[serde(default = "default_floating_size")]
     pub(crate) floating_size: String,
+    #[serde(default = "default_floating_background_mode")]
+    pub(crate) floating_background_mode: String,
     #[serde(default = "default_true")]
     pub(crate) floating_show_status_dot: bool,
     #[serde(default)]
@@ -152,6 +157,7 @@ impl Default for AppConfig {
             floating_opacity: default_floating_opacity(),
             floating_font_size: default_floating_font_size(),
             floating_size: default_floating_size(),
+            floating_background_mode: default_floating_background_mode(),
             floating_show_status_dot: true,
             floating_show_trend: false,
             floating_show_traffic: true,
@@ -325,6 +331,10 @@ pub(crate) fn validate_config(mut config: AppConfig) -> Result<AppConfig, String
     if !matches!(config.floating_size.as_str(), "compact" | "standard" | "large") {
         return Err("悬浮窗尺寸必须是 compact / standard / large".into());
     }
+    config.floating_background_mode = config.floating_background_mode.trim().to_ascii_lowercase();
+    if !matches!(config.floating_background_mode.as_str(), "glass" | "transparent" | "solid") {
+        return Err("悬浮窗背景样式必须是 glass / transparent / solid".into());
+    }
 
     config.traffic_interface = config.traffic_interface.trim().to_ascii_lowercase();
     if config.traffic_interface.is_empty() {
@@ -378,6 +388,7 @@ mod tests {
         assert!(config.floating_show_target);
         assert_eq!(config.floating_font_size, 42);
         assert_eq!(config.floating_size, "standard");
+        assert_eq!(config.floating_background_mode, "glass");
         assert!(config.floating_show_status_dot);
         assert!(!config.floating_show_trend);
         assert!(config.floating_show_traffic);
@@ -423,5 +434,18 @@ mod tests {
         assert!(validate_config(config.clone()).is_err());
         config.network_cat_custom_asset = "/tmp/cat.webp".into();
         assert!(validate_config(config).is_ok());
+    }
+
+    #[test]
+    fn floating_background_mode_validation_accepts_supported_modes() {
+        for mode in ["glass", "transparent", "solid"] {
+            let mut config = AppConfig::default();
+            config.floating_background_mode = mode.into();
+            assert!(validate_config(config).is_ok());
+        }
+
+        let mut config = AppConfig::default();
+        config.floating_background_mode = "invalid".into();
+        assert!(validate_config(config).is_err());
     }
 }
