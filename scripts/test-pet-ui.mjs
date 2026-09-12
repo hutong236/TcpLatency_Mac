@@ -72,13 +72,17 @@ const expect = async (name, fn) => { await fn(); checks.push(name); console.log(
 const attr = (name, value) => page.waitForFunction(([name, value]) => document.getElementById('pet3d').dataset[name] === value, [name, value]);
 const setConfig = patch => page.evaluate(patch => window.qa.config(patch), patch);
 const sample = patch => page.evaluate(patch => { window.qa.sample(patch); window.qa.sample(patch); }, patch);
-const screenshot = name => page.screenshot({ path: path.join(output, `${name}.png`), omitBackground: true });
+const screenshot = async name => {
+  await page.waitForTimeout(250); // Allow pose blending and the first GPU frame.
+  return page.screenshot({ path: path.join(output, `${name}.png`), omitBackground: true });
+};
 
 try {
   await page.goto(`${address}/index.html`);
   await expect('real 3D canvas and live text render', async () => {
     await attr('renderer', 'ready'); assert.equal(await page.title(), 'TCP Latency · Glass HUD');
     assert.equal(await page.locator('#pet3dStage canvas').count(), 1);
+    assert.equal(await page.locator('#pet3dFallback').isVisible(), false);
     assert.equal(await page.locator('#pet3dLatency').innerText(), '23');
     assert.equal(await page.locator('#floating').isVisible(), false);
     await page.evaluate(() => window.qa.traffic({}));
@@ -105,11 +109,12 @@ try {
       await page.setViewportSize({ width, height });
       await setConfig({ floatingSize: size, floatingFontSize: 52 });
       await sample({ targetName: 'Very long monitoring target name that must be ellipsized' });
-      const fits = await page.evaluate(() => {
+      const metrics = await page.evaluate(() => {
         const stage = document.getElementById('pet3dStage').getBoundingClientRect();
-        return stage.height > 60 && document.body.scrollWidth <= innerWidth && document.body.scrollHeight <= innerHeight;
+        return { stageHeight: stage.height, width: document.body.scrollWidth, height: document.body.scrollHeight, innerWidth, innerHeight };
       });
-      assert.ok(fits, `${size} fits`); await screenshot(`3d-${size}`);
+      assert.ok(metrics.stageHeight > 60 && metrics.width <= metrics.innerWidth && metrics.height <= metrics.innerHeight, `${size} fits: ${JSON.stringify(metrics)}`);
+      await screenshot(`3d-${size}`);
     }
   });
   await expect('disabled animation and Reduce Motion render a stable frame', async () => {

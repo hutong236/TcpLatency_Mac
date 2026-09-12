@@ -4,6 +4,7 @@ body .floating[hidden], #pet3d[hidden], #pet3d [hidden] { display: none !importa
   --pet-accent: #288d78;
   position: relative;
   width: 100%; height: 100%;
+  min-width: 0; min-height: 0; max-width: 100%;
   display: flex; flex-direction: column; align-items: center;
   padding: 7px 8px 3px;
   color: var(--primary);
@@ -14,7 +15,7 @@ body .floating[hidden], #pet3d[hidden], #pet3d [hidden] { display: none !importa
 .pet3d.pet-locked { cursor: default; }
 .pet-bubble {
   position: relative; z-index: 2;
-  width: calc(100% - 20px); flex: 0 0 auto;
+  width: calc(100% - 20px); flex: 0 0 auto; min-width: 0; max-width: 100%;
   padding: 9px 13px 10px; border-radius: 20px;
   background: rgba(255, 253, 247, .94);
   border: 1px solid rgba(255,255,255,.8);
@@ -35,7 +36,7 @@ body .floating[hidden], #pet3d[hidden], #pet3d [hidden] { display: none !importa
 .pet-traffic b { font-weight: 550; }
 .pet-traffic span { min-width: 0; }
 .pet-target { text-align: center; font-size: 10px; margin-top: 4px; line-height: 13px; color: var(--secondary); overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
-.pet-stage { position: relative; width: 100%; flex: 1 1 0; min-height: 0; }
+.pet-stage { position: relative; width: 100%; flex: 1 1 0; min-height: 0; min-width: 0; }
 .pet-stage canvas { width: 100%; height: 100%; display: block; }
 .pet-fallback { position: absolute; width: 70%; height: 90%; left: 15%; top: 5%; }
 .pet-footer { flex: 0 0 22px; height: 22px; max-width: 100%; display: flex; align-items: center; justify-content: center; gap: 4px; }

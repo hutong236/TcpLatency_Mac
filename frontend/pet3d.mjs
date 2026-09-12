@@ -44,7 +44,7 @@ async function ensureRenderer() {
     $('pet3dRetry').hidden = true;
     panel.dataset.renderer = 'ready';
     refreshMotion();
-    if (state) renderer.setState(state);
+    if (state) renderer?.setState(state);
   } catch (error) {
     if (generation === epoch && active()) fallback(String(error));
   } finally {
