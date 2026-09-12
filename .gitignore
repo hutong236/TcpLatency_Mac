@@ -1,2 +1,4 @@
 .DS_Store
 src-tauri/target/
+node_modules/
+test-results/

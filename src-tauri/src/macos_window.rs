@@ -2,6 +2,7 @@ use tauri::{
     window::{Effect, EffectState, EffectsBuilder},
     AppHandle, Manager,
 };
+use crate::config::AppConfig;
 
 #[cfg(target_os = "macos")]
 fn native_ns_window_ptr(
@@ -97,7 +98,14 @@ pub(crate) fn set_floating_visibility(app: &AppHandle, visible: bool) {
     }
 }
 
-fn floating_window_dimensions(size: &str) -> (f64, f64) {
+fn floating_window_dimensions(size: &str, pet: bool) -> (f64, f64) {
+    if pet {
+        return match size {
+            "compact" => (228.0, 250.0),
+            "large" => (336.0, 356.0),
+            _ => (280.0, 304.0),
+        };
+    }
     match size {
         "compact" => (178.0, 76.0),
         "large" => (268.0, 116.0),
@@ -105,14 +113,31 @@ fn floating_window_dimensions(size: &str) -> (f64, f64) {
     }
 }
 
-pub(crate) fn apply_floating_window_size(app: &AppHandle, size: &str) -> Result<(), String> {
+pub(crate) fn apply_floating_window_size(app: &AppHandle, config: &AppConfig) -> Result<(), String> {
     let Some(window) = app.get_webview_window("main") else {
         return Err("未找到悬浮窗口".into());
     };
-    let (width, height) = floating_window_dimensions(size);
+    let (width, height) = floating_window_dimensions(&config.floating_size, config.uses_3d_pet());
     window
         .set_size(tauri::Size::Logical(tauri::LogicalSize::new(width, height)))
-        .map_err(|e| format!("设置悬浮窗尺寸失败: {e}"))
+        .map_err(|e| format!("设置悬浮窗尺寸失败: {e}"))?;
+    // A HUD saved near a screen edge must remain reachable after growing into a pet.
+    if let (Ok(position), Some(monitor)) = (
+        window.outer_position(),
+        window.current_monitor().ok().flatten().or_else(|| window.primary_monitor().ok().flatten()),
+    ) {
+        let origin = monitor.position();
+        let screen = monitor.size();
+        let scale = monitor.scale_factor();
+        let max_x = (origin.x as f64 + screen.width as f64 - width * scale).max(origin.x as f64);
+        let max_y = (origin.y as f64 + screen.height as f64 - height * scale).max(origin.y as f64);
+        let clamped = tauri::PhysicalPosition::new(
+            (position.x as f64).clamp(origin.x as f64, max_x) as i32,
+            (position.y as f64).clamp(origin.y as f64, max_y) as i32,
+        );
+        if clamped != position { let _ = window.set_position(clamped); }
+    }
+    Ok(())
 }
 
 fn floating_effect_radius(size: &str) -> f64 {

@@ -40,6 +40,9 @@ fn default_traffic_interface() -> String {
 fn default_network_cat_theme() -> String {
     "default".into()
 }
+fn default_floating_display_mode() -> String {
+    "hud".into()
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default, rename_all = "camelCase")]
@@ -135,6 +138,10 @@ pub(crate) struct AppConfig {
     pub(crate) network_cat_theme: String,
     #[serde(default)]
     pub(crate) network_cat_custom_asset: String,
+    #[serde(default = "default_floating_display_mode")]
+    pub(crate) floating_display_mode: String,
+    #[serde(default = "default_true")]
+    pub(crate) pet3d_power_saver: bool,
     #[serde(default)]
     pub(crate) ui_version: u32,
 }
@@ -166,12 +173,22 @@ impl Default for AppConfig {
             network_cat_animation_enabled: true,
             network_cat_theme: default_network_cat_theme(),
             network_cat_custom_asset: String::new(),
-            ui_version: 8,
+            floating_display_mode: default_floating_display_mode(),
+            pet3d_power_saver: true,
+            ui_version: 9,
         }
     }
 }
 
 impl AppConfig {
+    pub(crate) fn uses_3d_pet(&self) -> bool {
+        self.floating_display_mode == "pet3d" && self.network_cat_enabled
+    }
+
+    pub(crate) fn effective_background_mode(&self) -> &str {
+        if self.uses_3d_pet() { "transparent" } else { &self.floating_background_mode }
+    }
+
     pub(crate) fn active_target(&self) -> Option<&TargetConfig> {
         self.targets
             .iter()
@@ -212,6 +229,8 @@ pub(crate) fn migrate_config(mut config: AppConfig) -> AppConfig {
         config.network_cat_custom_asset.clear();
         config.ui_version = 8;
     }
+    // New fields have serde defaults. Preserve every existing appearance choice.
+    config.ui_version = 9;
     config
 }
 
@@ -220,7 +239,7 @@ pub(crate) fn load_config() -> AppConfig {
     match fs::read_to_string(path) {
         Ok(raw) => {
             let parsed: AppConfig = serde_json::from_str(&raw).unwrap_or_default();
-            let needs_migration = parsed.ui_version < 8;
+            let needs_migration = parsed.ui_version < 9;
             let validated = validate_config(migrate_config(parsed)).unwrap_or_default();
             if needs_migration {
                 let _ = persist_config(&validated);
@@ -359,7 +378,11 @@ pub(crate) fn validate_config(mut config: AppConfig) -> Result<AppConfig, String
         return Err("使用 Custom 主题时必须填写自定义素材路径".into());
     }
 
-    config.ui_version = 8;
+    config.floating_display_mode = config.floating_display_mode.trim().to_ascii_lowercase();
+    if !matches!(config.floating_display_mode.as_str(), "hud" | "pet3d") {
+        return Err("悬浮显示模式必须是 hud / pet3d".into());
+    }
+    config.ui_version = 9;
 
     Ok(config)
 }
@@ -397,7 +420,9 @@ mod tests {
         assert!(config.network_cat_animation_enabled);
         assert_eq!(config.network_cat_theme, "default");
         assert!(config.network_cat_custom_asset.is_empty());
-        assert_eq!(config.ui_version, 8);
+        assert_eq!(config.floating_display_mode, "hud");
+        assert!(config.pet3d_power_saver);
+        assert_eq!(config.ui_version, 9);
     }
 
     #[test]
@@ -407,6 +432,35 @@ mod tests {
         duplicate.name = "Duplicate".into();
         config.targets.push(duplicate);
         assert!(validate_config(config).is_err());
+    }
+
+    #[test]
+    fn v8_migration_preserves_appearance_and_defaults_to_hud() {
+        let raw = r#"{"uiVersion":8,"networkCatTheme":"pixel","networkCatAnimationEnabled":false,"floatingBackgroundMode":"solid"}"#;
+        let config = validate_config(migrate_config(serde_json::from_str(raw).unwrap())).unwrap();
+        assert_eq!(config.network_cat_theme, "pixel");
+        assert!(!config.network_cat_animation_enabled);
+        assert_eq!(config.floating_display_mode, "hud");
+        assert_eq!(config.effective_background_mode(), "solid");
+    }
+
+    #[test]
+    fn pet_mode_roundtrips_and_retains_hud_preferences() {
+        let mut config = AppConfig::default();
+        config.floating_display_mode = "pet3d".into();
+        config.pet3d_power_saver = false;
+        let serialized = serde_json::to_string(&config).unwrap();
+        assert!(serialized.contains("pet3dPowerSaver"));
+        let mut restored = validate_config(serde_json::from_str(&serialized).unwrap()).unwrap();
+        assert!(restored.uses_3d_pet());
+        assert!(!restored.pet3d_power_saver);
+        assert_eq!(restored.effective_background_mode(), "transparent");
+        assert_eq!(restored.floating_background_mode, "glass");
+        restored.network_cat_enabled = false;
+        assert!(!restored.uses_3d_pet());
+        assert_eq!(restored.effective_background_mode(), "glass");
+        restored.floating_display_mode = "invalid".into();
+        assert!(validate_config(restored).is_err());
     }
 
     #[test]

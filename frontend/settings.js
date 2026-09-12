@@ -92,6 +92,14 @@ function normalizedFloatingBackgroundMode(mode) {
 }
 
 function updateFloatingRangeLabels() {
+  const pet = $('floatingDisplayMode')?.value === 'pet3d';
+  if ($('pet3dPowerSaverRow')) $('pet3dPowerSaverRow').hidden = !pet;
+  if ($('pet3dHint')) $('pet3dHint').hidden = !pet;
+  if ($('floatingBackgroundMode')) $('floatingBackgroundMode').disabled = pet;
+  const sizeLabels = pet
+    ? ['Compact · 228×250', 'Standard · 280×304', 'Large · 336×356']
+    : ['Compact · 178×76', 'Standard · 228×100', 'Large · 268×116'];
+  [...($('floatingSize')?.options || [])].forEach((option, i) => { option.textContent = sizeLabels[i]; });
   const opacityInput = $('floatingOpacity');
   const opacity = Number(opacityInput?.value ?? config?.floatingOpacity ?? 0.82);
   const fontSize = Number($('floatingFontSize')?.value ?? config?.floatingFontSize ?? 42);
@@ -99,9 +107,9 @@ function updateFloatingRangeLabels() {
     $('floatingBackgroundMode')?.value ?? config?.floatingBackgroundMode,
   );
 
-  if (opacityInput) opacityInput.disabled = backgroundMode === 'transparent';
+  if (opacityInput) opacityInput.disabled = pet || backgroundMode === 'transparent';
   if ($('floatingOpacityValue')) {
-    $('floatingOpacityValue').textContent = backgroundMode === 'transparent'
+    $('floatingOpacityValue').textContent = pet || backgroundMode === 'transparent'
       ? '纯透明'
       : `${Math.round(opacity * 100)}%`;
   }
@@ -138,6 +146,8 @@ async function testCurrentTarget() {
 }
 
 function renderConfig() {
+  $('floatingDisplayMode').value = config.floatingDisplayMode || 'hud';
+  $('pet3dPowerSaver').checked = config.pet3dPowerSaver !== false;
   refreshTargetSelect();
   $('showFloating').checked = config.showFloating;
   $('mousePassthrough').checked = config.mousePassthrough;
@@ -423,6 +433,7 @@ async function boot() {
     $(id).addEventListener('input', updateFloatingRangeLabels);
   }
   $('floatingBackgroundMode').addEventListener('change', updateFloatingRangeLabels);
+  $('floatingDisplayMode').addEventListener('change', updateFloatingRangeLabels);
 
   $('save').addEventListener('click', () => save(true, true));
 
@@ -470,7 +481,9 @@ async function save(showSuccess = true, updateForm = true) {
   config.floatingSize = $('floatingSize').value;
   config.floatingOpacity = Number($('floatingOpacity').value);
   config.floatingFontSize = Number($('floatingFontSize').value);
-  config.uiVersion = 8;
+  config.floatingDisplayMode = $('floatingDisplayMode').value;
+  config.pet3dPowerSaver = $('pet3dPowerSaver').checked;
+  config.uiVersion = 9;
   config.autostart = $('autostart').checked;
   config.notificationsEnabled = $('notificationsEnabled').checked;
   config.notifyRecovery = $('notifyRecovery').checked;

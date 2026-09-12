@@ -14,6 +14,31 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  pet-ui:
+    name: 3D pet UI and rendering
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install browser test runtime
+        run: |
+          npm install --no-save --ignore-scripts playwright@1.56.1
+          npx playwright install --with-deps chromium
+      - name: Run state and WebView UI checks
+        run: |
+          node --test scripts/test-pet-state.mjs
+          node scripts/test-pet-ui.mjs
+      - name: Upload rendered evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pet-3d-ui-evidence
+          path: test-results/
+          if-no-files-found: warn
+
   validate:
     name: Static checks and Rust tests
     runs-on: macos-15

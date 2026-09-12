@@ -9,6 +9,10 @@ if command -v node >/dev/null 2>&1; then
   node --check frontend/traffic-settings.js
   node --check frontend/traffic-floating.js
   node --check frontend/cat-floating.js
+  for module in pet-state pet3d cat-model cat-renderer; do
+    node --check "frontend/${module}.mjs"
+  done
+  node --test scripts/test-pet-state.mjs
 else
   echo "WARN: node 不存在，跳过 JavaScript 语法检查"
 fi
@@ -20,13 +24,13 @@ if command -v python3 >/dev/null 2>&1; then
 import tomllib
 with open("src-tauri/Cargo.toml", "rb") as f:
     cargo = tomllib.load(f)
-assert cargo["package"]["version"] == "0.12.0"
+assert cargo["package"]["version"] == "0.13.0"
 PYTOML
 else
   echo "WARN: python3 不存在，跳过 JSON/TOML 语法检查"
 fi
 
-grep -q '"version": "0.12.0"' src-tauri/tauri.conf.json
+grep -q '"version": "0.13.0"' src-tauri/tauri.conf.json
 grep -q '"shadow": false' src-tauri/tauri.conf.json
 
 # Backend module boundaries: main.rs should only assemble the application.
@@ -46,7 +50,7 @@ grep -q 'network_cat_enabled' src-tauri/src/config.rs
 grep -q 'network_cat_animation_enabled' src-tauri/src/config.rs
 grep -q 'network_cat_theme' src-tauri/src/config.rs
 grep -q 'network_cat_custom_asset' src-tauri/src/config.rs
-grep -q 'config.ui_version = 8' src-tauri/src/config.rs
+grep -q 'config.ui_version = 9' src-tauri/src/config.rs
 grep -q 'custom_cat_requires_supported_asset' src-tauri/src/config.rs
 
 grep -q 'load_cat_asset' src-tauri/src/commands.rs
@@ -145,7 +149,7 @@ grep -q 'networkCatAnimationEnabled' frontend/traffic-settings.js
 grep -q 'networkCatTheme' frontend/traffic-settings.js
 grep -q 'networkCatFile' frontend/traffic-settings.js
 grep -q 'save_cat_asset' frontend/traffic-settings.js
-grep -q 'config.uiVersion = 8' frontend/traffic-settings.js
+grep -q 'config.uiVersion = 9' frontend/traffic-settings.js
 
 test -x script/build_and_run.sh
 test -f .codex/environments/environment.toml

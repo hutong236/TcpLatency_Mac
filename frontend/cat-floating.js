@@ -281,7 +281,7 @@ function applyCatTraffic(snapshot) {
 async function applyCatConfig(nextConfig) {
   catConfig = nextConfig;
   applyCatVisibilityAndMotion();
-  if (catConfig.networkCatEnabled === false) {
+  if (catConfig.networkCatEnabled === false || catConfig.floatingDisplayMode === 'pet3d') {
     if (customObjectUrl) {
       revokeCustomObjectUrl();
       lastTheme = '';

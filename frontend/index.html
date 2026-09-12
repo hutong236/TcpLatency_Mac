@@ -7,6 +7,7 @@
   <link rel="stylesheet" href="floating.css" />
   <link rel="stylesheet" href="traffic.css" />
   <link rel="stylesheet" href="cat.css" />
+  <link rel="stylesheet" href="pet3d.css" />
 </head>
 <body>
   <main
@@ -53,8 +54,40 @@
 
     <div id="target" class="target" data-tauri-drag-region>Starting…</div>
   </main>
+  <section id="pet3d" class="pet3d" hidden aria-label="3D 网络小猫">
+    <div class="pet-bubble" data-tauri-drag-region>
+      <div class="pet-status-line" data-tauri-drag-region><i id="pet3dDot" class="pet-dot" aria-hidden="true"></i><span id="pet3dStatus" role="status" data-tauri-drag-region>等待采样</span></div>
+      <div class="pet-metric" data-tauri-drag-region><span id="pet3dLatency" data-tauri-drag-region>--</span><span id="pet3dUnit" data-tauri-drag-region>ms</span></div>
+      <div id="pet3dTraffic" class="pet-traffic" data-tauri-drag-region>
+        <span data-tauri-drag-region>↓ <b id="pet3dDownload" data-tauri-drag-region>--</b></span>
+        <span data-tauri-drag-region>↑ <b id="pet3dUpload" data-tauri-drag-region>--</b></span>
+      </div>
+      <div id="pet3dTarget" class="pet-target" data-tauri-drag-region>等待目标</div>
+    </div>
+    <div id="pet3dStage" class="pet-stage" data-tauri-drag-region>
+      <svg id="pet3dFallback" class="pet-fallback" viewBox="0 0 180 160" aria-hidden="true" data-tauri-drag-region>
+        <ellipse cx="90" cy="146" rx="56" ry="8" fill="#24302b" opacity=".12"/>
+        <path d="M49 128Q7 120 25 84" fill="none" stroke="#dfa26d" stroke-width="14" stroke-linecap="round"/>
+        <ellipse cx="91" cy="106" rx="37" ry="42" fill="#e9ae78"/>
+        <ellipse cx="91" cy="117" rx="22" ry="27" fill="#fff1d9"/>
+        <path d="M47 53L47 12 77 39M105 39L136 12 137 58" fill="#e9ae78" stroke="#e9ae78" stroke-width="8" stroke-linejoin="round"/>
+        <ellipse cx="91" cy="62" rx="48" ry="38" fill="#e9ae78"/>
+        <ellipse cx="72" cy="60" rx="6" ry="9" fill="#293a34"/><ellipse cx="109" cy="60" rx="6" ry="9" fill="#293a34"/>
+        <ellipse cx="91" cy="82" rx="23" ry="13" fill="#fff1d9"/><path d="M86 75h10l-5 6z" fill="#d88d88"/>
+        <path d="M67 98q24 12 49 0" fill="none" stroke="#58aaa0" stroke-width="6"/>
+        <ellipse cx="72" cy="142" rx="15" ry="8" fill="#fff1d9"/><ellipse cx="109" cy="142" rx="15" ry="8" fill="#fff1d9"/>
+      </svg>
+    </div>
+    <div class="pet-footer">
+      <span id="pet3dNotice" class="pet-notice">拖动移动 · 双击设置</span>
+      <button id="pet3dRetry" type="button" hidden>重试</button>
+      <button id="pet3dLock" type="button" aria-label="锁定鼠标穿透" title="锁定鼠标穿透；从菜单栏解除">锁</button>
+      <button id="pet3dSettings" type="button" aria-label="打开设置" title="打开设置">⚙</button>
+    </div>
+  </section>
   <script src="floating.js"></script>
   <script src="traffic-floating.js"></script>
   <script src="cat-floating.js"></script>
+  <script type="module" src="pet3d.mjs"></script>
 </body>
 </html>

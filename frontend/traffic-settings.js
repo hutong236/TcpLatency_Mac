@@ -158,7 +158,7 @@ function syncCatControlsToConfig() {
   config.networkCatAnimationEnabled = animation.checked;
   config.networkCatTheme = theme.value;
   config.networkCatCustomAsset = path.value.trim();
-  config.uiVersion = 8;
+  config.uiVersion = 9;
 }
 
 async function importCatAsset(event) {
@@ -232,7 +232,7 @@ async function bootTrafficSettings() {
   installTrafficControls();
   installCatControls();
   const eyebrow = document.querySelector('.eyebrow');
-  if (eyebrow) eyebrow.textContent = 'TCP LATENCY · V0.12.0';
+  if (eyebrow) eyebrow.textContent = 'TCP LATENCY · V0.13.0';
   const initialConfig = await invoke('get_config');
   renderTrafficControls(initialConfig);
   renderCatControls(initialConfig);

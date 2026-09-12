@@ -104,6 +104,14 @@
 
     <section class="card">
       <h2>悬浮窗与启动</h2>
+      <label>显示模式
+        <select id="floatingDisplayMode">
+          <option value="hud">数字 HUD · 2D 网络猫</option>
+          <option value="pet3d">3D 桌面小猫 · 实时状态气泡</option>
+        </select>
+      </label>
+      <label class="toggle-row" id="pet3dPowerSaverRow" hidden><span><b>3D 省电模式</b><small>启用时最高 15 帧/秒；关闭后最高 30 帧/秒。隐藏时释放渲染资源。</small></span><input id="pet3dPowerSaver" type="checkbox" /></label>
+      <p id="pet3dHint" class="hint" hidden>内置立体小猫会随延迟、流量和异常改变动作。拖动气泡或小猫可移动，双击打开设置。关闭“网络猫动画”后保持静态；锁定鼠标穿透后请从菜单栏解除。</p>
       <label class="toggle-row"><span><b>桌面悬浮延迟</b><small>始终置顶显示当前主目标实时数字</small></span><input id="showFloating" type="checkbox" /></label>
       <label class="toggle-row"><span><b>鼠标穿透</b><small>锁定悬浮窗后不拦截浏览器、终端等应用的鼠标操作；可从菜单栏解除</small></span><input id="mousePassthrough" type="checkbox" /></label>
       <label class="toggle-row"><span><b>显示目标名称</b><small>第二行显示当前主目标；长名称自动省略，不改变窗体宽度</small></span><input id="floatingShowTarget" type="checkbox" /></label>

@@ -102,3 +102,5 @@ button:disabled { opacity:.55; cursor:default; }
 input[type="range"] { padding:0; accent-color:var(--accent); }
 .compact-grid { align-items:end; }
 @media (max-width:760px) { .summary { grid-template-columns:repeat(4, 1fr); } }
+/* Hidden mode-specific settings must override the existing flex row rule. */
+[hidden] { display: none !important; }

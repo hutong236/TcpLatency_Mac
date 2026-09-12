@@ -1,3 +1,5 @@
+> **V0.13.0：3D 桌面小猫。** 在“设置 → 悬浮窗与启动 → 显示模式”选择“3D 桌面小猫”，即可显示立体小猫、主目标延迟和本机上下行速率。支持三档大小、数据联动动作、鼠标跟随、锁定穿透及省电模式。内置模型与渲染引擎可离线工作；现有配置默认继续使用数字 HUD。详见 [V0.13.0 更新说明](CHANGELOG_V0.13.0.md)。
+
 > V0.8: macOS AppKit bridge 已从 deprecated `cocoa 0.26.1` 迁移到 `objc2-app-kit 0.3.2`，并移除 macOS 14 已弃用的 `activateIgnoringOtherApps`。详见 `CHANGELOG_V0.8.md`。
 
 > V0.7.2 hotfix: 关闭透明 NSWindow 的矩形原生阴影，只保留跟随圆角的 CSS 阴影，修复悬浮窗左下/右下角方形阴影残影。详见 `FIX_V0.7.2.md`。
