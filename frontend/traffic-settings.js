@@ -69,7 +69,7 @@ function installCatControls() {
       <label class="toggle-row">
         <span>
           <b>显示网络猫</b>
-          <small>在延迟数字旁显示网络状态动画；关闭后不占用 HUD 空间</small>
+          <small>显示 2D 网络猫或 3D 桌面小猫；关闭后只显示网络数字</small>
         </span>
         <input id="networkCatEnabled" type="checkbox" />
       </label>
@@ -81,13 +81,14 @@ function installCatControls() {
         <input id="networkCatAnimationEnabled" type="checkbox" />
       </label>
       <div class="grid two">
-        <label>动画主题
+        <label>2D 动画主题
           <select id="networkCatTheme">
             <option value="default">Default Cat · 极简轮廓</option>
             <option value="pixel">Pixel Cat · 8-bit 像素</option>
             <option value="cyber">Cyber Cat · 科技数据流</option>
             <option value="custom">Custom · 自定义素材</option>
           </select>
+          <small>3D 模式使用内置橘白小猫，2D 主题在数字 HUD 模式生效。</small>
         </label>
         <label id="networkCatFileRow">选择自定义素材
           <input id="networkCatFile" type="file" accept=".svg,.png,.apng,.webp,.gif,image/svg+xml,image/png,image/webp,image/gif" />
@@ -113,22 +114,26 @@ function installCatControls() {
   }
   document.getElementById('networkCatCustomAsset')?.addEventListener('input', syncCatControlsToConfig);
   document.getElementById('networkCatFile')?.addEventListener('change', importCatAsset);
+  document.getElementById('floatingDisplayMode')?.addEventListener('change', () => updateCatControlState());
   document.getElementById('testCatAsset')?.addEventListener('click', testCatAsset);
   document.getElementById('save')?.addEventListener('click', syncCatControlsToConfig, true);
 }
 
-function updateCatControlState() {
+function updateCatControlState(displayMode = document.getElementById('floatingDisplayMode')?.value) {
   const enabled = document.getElementById('networkCatEnabled');
   const animation = document.getElementById('networkCatAnimationEnabled');
   const theme = document.getElementById('networkCatTheme');
   const fileRow = document.getElementById('networkCatFileRow');
   const pathRow = document.getElementById('networkCatPathRow');
   const active = enabled?.checked !== false;
+  const pet = displayMode === 'pet3d';
   if (animation) animation.disabled = !active;
-  if (theme) theme.disabled = !active;
-  const custom = active && theme?.value === 'custom';
+  if (theme) theme.disabled = !active || pet;
+  const custom = active && !pet && theme?.value === 'custom';
   if (fileRow) fileRow.hidden = !custom;
   if (pathRow) pathRow.hidden = !custom;
+  const testButton = document.getElementById('testCatAsset');
+  if (testButton) testButton.disabled = !custom;
 }
 
 function renderCatControls(nextConfig) {
@@ -143,7 +148,7 @@ function renderCatControls(nextConfig) {
   animation.checked = nextConfig?.networkCatAnimationEnabled !== false;
   theme.value = nextConfig?.networkCatTheme || 'default';
   path.value = nextConfig?.networkCatCustomAsset || '';
-  updateCatControlState();
+  updateCatControlState(nextConfig?.floatingDisplayMode);
 }
 
 function syncCatControlsToConfig() {

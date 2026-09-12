@@ -157,7 +157,9 @@ try {
   await expect('settings save and reload preserve mode and HUD background', async () => {
     await page.setViewportSize({ width: 760, height: 860 }); await page.goto(`${address}/settings.html`);
     await page.waitForFunction(() => document.getElementById('floatingDisplayMode').value === 'pet3d');
+    assert.equal(await page.locator('#networkCatTheme').isDisabled(), true);
     await page.locator('#floatingDisplayMode').selectOption('hud');
+    assert.equal(await page.locator('#networkCatTheme').isDisabled(), false);
     await page.locator('#floatingBackgroundMode').selectOption('solid');
     await page.locator('#save').click();
     await page.waitForFunction(() => window.qa.getConfig().floatingBackgroundMode === 'solid');
