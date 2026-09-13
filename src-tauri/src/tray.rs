@@ -7,7 +7,7 @@ use std::sync::{atomic::Ordering, Arc};
 use tauri::{
     menu::{Menu, MenuItem, PredefinedMenuItem},
     tray::TrayIconBuilder,
-    AppHandle, Emitter, Manager,
+    AppHandle, Emitter,
 };
 
 fn build_tray_menu(app: &AppHandle, state: &Arc<SharedState>) -> tauri::Result<Menu<tauri::Wry>> {
