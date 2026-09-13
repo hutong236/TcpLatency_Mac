@@ -1,2 +1,5 @@
 .DS_Store
 src-tauri/target/
+.zcode/
+src-tauri/gen/
+src-tauri/Cargo.lock
