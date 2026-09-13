@@ -1,4 +1,5 @@
 use crate::{
+    battery::BatteryStatus,
     config::{persist_config, validate_config, AppConfig, TargetConfig},
     macos_window::{
         apply_floating_window_effect, apply_floating_window_size, set_floating_visibility,
@@ -74,6 +75,11 @@ fn sync_autostart(app: &AppHandle, enabled: bool) -> Result<(), String> {
 #[tauri::command]
 pub(crate) fn get_config(state: State<'_, Arc<SharedState>>) -> AppConfig {
     state.config.read().map(|c| c.clone()).unwrap_or_default()
+}
+
+#[tauri::command]
+pub(crate) fn get_battery(state: State<'_, Arc<SharedState>>) -> BatteryStatus {
+    state.battery.lock().map(|s| s.clone()).unwrap_or_default()
 }
 
 #[tauri::command]
@@ -174,6 +180,7 @@ pub(crate) fn save_config(
     state.generation.fetch_add(1, Ordering::Relaxed);
     state.reconcile_targets(&config);
     state.scheduler_notify.notify_one();
+    state.battery_notify.notify_one();
 
     apply_floating_window_size(&app, &config.floating_size)?;
     apply_floating_window_effect(

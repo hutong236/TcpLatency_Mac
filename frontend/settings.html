@@ -133,6 +133,16 @@
     </section>
 
     <section class="card">
+      <h2>电池与省电</h2>
+      <label class="toggle-row"><span><b>使用电池供电时自动暂停</b><small>拔掉电源适配器后停止全部探测与流量采样，插回电源自动恢复</small></span><input id="batteryPauseOnBattery" type="checkbox" /></label>
+      <label class="toggle-row"><span><b>电量低于阈值时自动暂停</b><small>触发后电量需回升到阈值 +5% 以上才恢复，避免临界电量反复启停</small></span><input id="batteryPauseLowEnabled" type="checkbox" /></label>
+      <div class="grid two">
+        <label>电量阈值 (%)<input id="batteryLowThreshold" type="number" min="5" max="50" step="1" /></label>
+      </div>
+      <p id="batteryStatus" class="hint">正在读取电池状态…</p>
+    </section>
+
+    <section class="card">
       <h2>异常通知</h2>
       <label class="toggle-row"><span><b>macOS 系统通知</b><small>高延迟或连续失败达到条件时通知</small></span><input id="notificationsEnabled" type="checkbox" /></label>
       <label class="toggle-row"><span><b>恢复通知</b><small>异常目标恢复可达或延迟回落后发送一次恢复消息</small></span><input id="notifyRecovery" type="checkbox" /></label>

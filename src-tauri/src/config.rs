@@ -40,6 +40,9 @@ fn default_traffic_interface() -> String {
 fn default_network_cat_theme() -> String {
     "default".into()
 }
+fn default_battery_low_threshold() -> u32 {
+    20
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default, rename_all = "camelCase")]
@@ -136,6 +139,12 @@ pub(crate) struct AppConfig {
     #[serde(default)]
     pub(crate) network_cat_custom_asset: String,
     #[serde(default)]
+    pub(crate) battery_pause_on_battery: bool,
+    #[serde(default)]
+    pub(crate) battery_pause_low_enabled: bool,
+    #[serde(default = "default_battery_low_threshold")]
+    pub(crate) battery_low_threshold_percent: u32,
+    #[serde(default)]
     pub(crate) ui_version: u32,
 }
 
@@ -166,6 +175,9 @@ impl Default for AppConfig {
             network_cat_animation_enabled: true,
             network_cat_theme: default_network_cat_theme(),
             network_cat_custom_asset: String::new(),
+            battery_pause_on_battery: false,
+            battery_pause_low_enabled: false,
+            battery_low_threshold_percent: default_battery_low_threshold(),
             ui_version: 8,
         }
     }
@@ -343,6 +355,9 @@ pub(crate) fn validate_config(mut config: AppConfig) -> Result<AppConfig, String
     if !valid_interface_name(&config.traffic_interface) {
         return Err("流量接口必须是 auto 或合法的 macOS 接口名（如 en0 / utun3）".into());
     }
+    if !(5..=50).contains(&config.battery_low_threshold_percent) {
+        return Err("电池电量阈值必须在 5~50% 之间".into());
+    }
 
     config.network_cat_theme = config.network_cat_theme.trim().to_ascii_lowercase();
     if !matches!(config.network_cat_theme.as_str(), "default" | "pixel" | "cyber" | "custom") {
@@ -397,6 +412,9 @@ mod tests {
         assert!(config.network_cat_animation_enabled);
         assert_eq!(config.network_cat_theme, "default");
         assert!(config.network_cat_custom_asset.is_empty());
+        assert!(!config.battery_pause_on_battery);
+        assert!(!config.battery_pause_low_enabled);
+        assert_eq!(config.battery_low_threshold_percent, 20);
         assert_eq!(config.ui_version, 8);
     }
 
@@ -446,6 +464,15 @@ mod tests {
 
         let mut config = AppConfig::default();
         config.floating_background_mode = "invalid".into();
+        assert!(validate_config(config).is_err());
+    }
+
+    #[test]
+    fn battery_threshold_out_of_range_is_rejected() {
+        let mut config = AppConfig::default();
+        config.battery_low_threshold_percent = 4;
+        assert!(validate_config(config.clone()).is_err());
+        config.battery_low_threshold_percent = 51;
         assert!(validate_config(config).is_err());
     }
 }

@@ -13,6 +13,7 @@ function fmt(value, suffix = ' ms') {
 
 function statusText(status, paused = false) {
   if (paused || status === 'paused') return 'Paused';
+  if (status === 'battery') return 'Battery';
   if (status === 'ok') return 'OK';
   if (status === 'timeout') return 'Timeout';
   if (status === 'refused') return 'Refused';
@@ -26,7 +27,7 @@ function statusText(status, paused = false) {
 }
 
 function statusClass(snapshot) {
-  if (!snapshot || snapshot.paused || snapshot.status === 'disabled' || snapshot.status === 'starting') return '';
+  if (!snapshot || snapshot.paused || snapshot.batteryPaused || snapshot.status === 'disabled' || snapshot.status === 'starting') return '';
   if (snapshot.status === 'stale') return 'warning';
   if (snapshot.status !== 'ok') return 'bad';
   if (snapshot.currentMs == null) return '';
@@ -150,6 +151,9 @@ function renderConfig() {
   $('floatingFontSize').value = config.floatingFontSize ?? 42;
   updateFloatingRangeLabels();
   $('autostart').checked = config.autostart;
+  $('batteryPauseOnBattery').checked = config.batteryPauseOnBattery === true;
+  $('batteryPauseLowEnabled').checked = config.batteryPauseLowEnabled === true;
+  $('batteryLowThreshold').value = config.batteryLowThresholdPercent ?? 20;
   $('notificationsEnabled').checked = config.notificationsEnabled;
   $('notifyRecovery').checked = config.notifyRecovery !== false;
   $('notifyHighCount').value = config.notifyConsecutiveHigh;
@@ -163,8 +167,21 @@ function renderConfig() {
   queueChart();
 }
 
+function renderBatteryStatus(b) {
+  if (!b) return;
+  const el = $('batteryStatus');
+  if (!b.available) {
+    el.textContent = '未读取到电源信息，省电暂停不可用';
+    return;
+  }
+  const power = b.onAc ? '电源适配器供电' : '电池供电';
+  const level = b.levelPercent == null ? '' : ` · 电量 ${b.levelPercent}%`;
+  const guard = b.guardPaused ? ' · 省电暂停已生效' : '';
+  el.textContent = `当前：${power}${level}${guard}`;
+}
+
 function renderSnapshot(s) {
-  const currentLabel = s.paused ? 'Paused' : (s.currentMs == null ? statusText(s.status) : fmt(s.currentMs));
+  const currentLabel = s.batteryPaused ? 'Battery' : (s.paused ? 'Paused' : (s.currentMs == null ? statusText(s.status) : fmt(s.currentMs)));
   $('liveBadge').textContent = currentLabel;
   $('current').textContent = currentLabel;
   $('avg').textContent = fmt(s.averageMs);
@@ -193,6 +210,7 @@ function renderTargetRows() {
       averageMs: null,
       failurePercent: 0,
       paused: false,
+      batteryPaused: false,
     };
     const cls = statusClass(s);
     const current = s.currentMs == null ? statusText(s.status, s.paused) : fmt(s.currentMs);
@@ -350,6 +368,7 @@ async function boot() {
   config = await invoke('get_config');
   renderConfig();
   $('paused').checked = await invoke('is_paused');
+  renderBatteryStatus(await invoke('get_battery'));
 
   await loadSnapshots();
   const first = await invoke('get_snapshot');
@@ -456,6 +475,8 @@ async function boot() {
     renderConfig();
   });
 
+  await listen('battery-update', event => renderBatteryStatus(event.payload));
+
   window.addEventListener('resize', () => queueChart(true));
 }
 
@@ -472,6 +493,9 @@ async function save(showSuccess = true, updateForm = true) {
   config.floatingFontSize = Number($('floatingFontSize').value);
   config.uiVersion = 8;
   config.autostart = $('autostart').checked;
+  config.batteryPauseOnBattery = $('batteryPauseOnBattery').checked;
+  config.batteryPauseLowEnabled = $('batteryPauseLowEnabled').checked;
+  config.batteryLowThresholdPercent = Number($('batteryLowThreshold').value);
   config.notificationsEnabled = $('notificationsEnabled').checked;
   config.notifyRecovery = $('notifyRecovery').checked;
   config.notifyConsecutiveHigh = Number($('notifyHighCount').value);

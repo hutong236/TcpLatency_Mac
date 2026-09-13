@@ -141,6 +141,13 @@ function render(snapshot) {
   if (floatingEl.getAttribute('aria-label') !== ariaLabel) floatingEl.setAttribute('aria-label', ariaLabel);
   if (statusDotEl.getAttribute('title') !== statusTitle) statusDotEl.setAttribute('title', statusTitle);
 
+  if (snapshot.batteryPaused) {
+    setVisualState('paused', 'status-text');
+    setValue('Battery');
+    previousMs = null;
+    return;
+  }
+
   if (snapshot.paused) {
     setVisualState('paused', 'status-text');
     setValue('Paused');

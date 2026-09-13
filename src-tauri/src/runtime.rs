@@ -1,4 +1,5 @@
 use crate::{
+    battery::BatteryStatus,
     config::{endpoint_key, AppConfig, TargetConfig},
     probe::{tcp_probe, ProbeResult},
 };
@@ -38,6 +39,7 @@ pub(crate) struct ProbeSnapshot {
     pub(crate) status: String,
     pub(crate) error: Option<String>,
     pub(crate) paused: bool,
+    pub(crate) battery_paused: bool,
     pub(crate) timestamp_ms: u128,
     pub(crate) sample_age_ms: u128,
     pub(crate) dns_ms: Option<f64>,
@@ -63,6 +65,7 @@ impl ProbeSnapshot {
             status: if target.enabled { "starting" } else { "disabled" }.into(),
             error: None,
             paused: false,
+            battery_paused: false,
             timestamp_ms: now_millis(),
             sample_age_ms: 0,
             dns_ms: None,
@@ -119,10 +122,13 @@ impl TargetRuntime {
 pub(crate) struct SharedState {
     pub(crate) config: RwLock<AppConfig>,
     pub(crate) paused: AtomicBool,
+    pub(crate) battery_paused: AtomicBool,
+    pub(crate) battery: Mutex<BatteryStatus>,
     runtimes: Mutex<HashMap<String, TargetRuntime>>,
     inflight: Mutex<HashMap<String, u64>>,
     pub(crate) generation: AtomicU64,
     pub(crate) scheduler_notify: Notify,
+    pub(crate) battery_notify: Notify,
 }
 
 impl SharedState {
@@ -134,10 +140,13 @@ impl SharedState {
         Self {
             config: RwLock::new(config),
             paused: AtomicBool::new(false),
+            battery_paused: AtomicBool::new(false),
+            battery: Mutex::new(BatteryStatus::default()),
             runtimes: Mutex::new(runtimes),
             inflight: Mutex::new(HashMap::new()),
             generation: AtomicU64::new(1),
             scheduler_notify: Notify::new(),
+            battery_notify: Notify::new(),
         }
     }
 
@@ -191,9 +200,19 @@ fn stale_after_ms(target: &TargetConfig) -> u128 {
     (target.interval_ms.saturating_mul(3).saturating_add(target.timeout_ms)).max(5_000) as u128
 }
 
-fn apply_freshness(target: &TargetConfig, mut snapshot: ProbeSnapshot, paused: bool) -> ProbeSnapshot {
+fn apply_freshness(
+    target: &TargetConfig,
+    mut snapshot: ProbeSnapshot,
+    paused: bool,
+    battery_paused: bool,
+) -> ProbeSnapshot {
     snapshot.paused = paused;
+    snapshot.battery_paused = battery_paused;
     snapshot.sample_age_ms = now_millis().saturating_sub(snapshot.timestamp_ms);
+    if battery_paused && target.enabled {
+        snapshot.status = "battery".into();
+        return snapshot;
+    }
     if paused && target.enabled {
         snapshot.status = "paused".into();
         return snapshot;
@@ -291,6 +310,7 @@ fn stats(
 pub(crate) fn snapshot_for_active(state: &SharedState) -> ProbeSnapshot {
     let config = state.config.read().map(|c| c.clone()).unwrap_or_default();
     let paused = state.paused.load(Ordering::Relaxed);
+    let battery_paused = state.battery_paused.load(Ordering::Relaxed);
     let Some(target) = config.active_target() else {
         return ProbeSnapshot::empty();
     };
@@ -301,12 +321,13 @@ pub(crate) fn snapshot_for_active(state: &SharedState) -> ProbeSnapshot {
         .ok()
         .and_then(|runtimes| runtimes.get(&target.id).map(|runtime| runtime.snapshot.clone()))
         .unwrap_or_else(|| ProbeSnapshot::for_target(target));
-    apply_freshness(target, snapshot, paused)
+    apply_freshness(target, snapshot, paused, battery_paused)
 }
 
 pub(crate) fn all_snapshots(state: &SharedState) -> Vec<ProbeSnapshot> {
     let config = state.config.read().map(|c| c.clone()).unwrap_or_default();
     let paused = state.paused.load(Ordering::Relaxed);
+    let battery_paused = state.battery_paused.load(Ordering::Relaxed);
     let runtimes = state.runtimes.lock().ok();
 
     config
@@ -317,7 +338,7 @@ pub(crate) fn all_snapshots(state: &SharedState) -> Vec<ProbeSnapshot> {
                 .as_ref()
                 .and_then(|map| map.get(&target.id).map(|runtime| runtime.snapshot.clone()))
                 .unwrap_or_else(|| ProbeSnapshot::for_target(target));
-            apply_freshness(target, snapshot, paused)
+            apply_freshness(target, snapshot, paused, battery_paused)
         })
         .collect()
 }
@@ -347,6 +368,9 @@ pub(crate) fn history_for_target(state: &SharedState, target_id: &str) -> Vec<Hi
 }
 
 fn tray_title(snapshot: &ProbeSnapshot) -> String {
+    if snapshot.battery_paused {
+        return "Battery".into();
+    }
     if snapshot.paused {
         return "Paused".into();
     }
@@ -473,6 +497,7 @@ fn complete_probe(
         status: status.clone(),
         error: result.error.clone(),
         paused: false,
+        battery_paused: false,
         timestamp_ms: now,
         sample_age_ms: 0,
         dns_ms: result.dns_ms,
@@ -641,7 +666,9 @@ fn clear_inflight(state: &SharedState, target_id: &str, generation: u64) {
 
 pub(crate) async fn probe_scheduler(app: AppHandle, state: Arc<SharedState>) {
     loop {
-        if state.paused.load(Ordering::Relaxed) {
+        if state.paused.load(Ordering::Relaxed)
+            || state.battery_paused.load(Ordering::Relaxed)
+        {
             state.scheduler_notify.notified().await;
             continue;
         }
@@ -719,6 +746,17 @@ mod tests {
         target.interval_ms = 200;
         target.timeout_ms = 100;
         assert_eq!(stale_after_ms(&target), 5_000);
+    }
+
+    #[test]
+    fn battery_pause_takes_precedence_over_stale_status() {
+        let target = TargetConfig::default();
+        let mut snapshot = ProbeSnapshot::for_target(&target);
+        snapshot.status = "ok".into();
+        let result = apply_freshness(&target, snapshot, false, true);
+        assert_eq!(result.status, "battery");
+        assert!(result.battery_paused);
+        assert!(!result.paused);
     }
 
     #[test]

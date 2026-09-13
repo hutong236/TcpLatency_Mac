@@ -1,6 +1,10 @@
 use crate::runtime::{now_millis, SharedState};
 use serde::Serialize;
-use std::{process::Command, sync::Arc, time::{Duration, Instant}};
+use std::{
+    process::Command,
+    sync::{atomic::Ordering, Arc},
+    time::{Duration, Instant},
+};
 use tauri::{AppHandle, Emitter};
 
 const SAMPLE_INTERVAL: Duration = Duration::from_secs(1);
@@ -263,7 +267,7 @@ pub(crate) async fn traffic_sampler(app: AppHandle, state: Arc<SharedState>) {
 
     loop {
         let config = state.config.read().map(|c| c.clone()).unwrap_or_default();
-        if !config.floating_show_traffic {
+        if !config.floating_show_traffic || state.battery_paused.load(Ordering::Relaxed) {
             runtime.previous = None;
             runtime.route_checked_at = None;
             if runtime.was_enabled {

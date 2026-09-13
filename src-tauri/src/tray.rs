@@ -42,12 +42,15 @@ fn build_tray_menu(app: &AppHandle, state: &Arc<SharedState>) -> tauri::Result<M
         true,
         None::<&str>,
     )?;
-    let pause_label = if state.paused.load(Ordering::Relaxed) {
-        "恢复监测"
+    // 电池省电暂停期间置灰手动暂停项：此时点击不会有任何可见变化。
+    let (pause_label, pause_enabled) = if state.battery_paused.load(Ordering::Relaxed) {
+        ("电池省电已暂停", false)
+    } else if state.paused.load(Ordering::Relaxed) {
+        ("恢复监测", true)
     } else {
-        "暂停监测"
+        ("暂停监测", true)
     };
-    let pause_item = MenuItem::with_id(app, "toggle-pause", pause_label, true, None::<&str>)?;
+    let pause_item = MenuItem::with_id(app, "toggle-pause", pause_label, pause_enabled, None::<&str>)?;
     let separator2 = PredefinedMenuItem::separator(app)?;
     let settings_item = MenuItem::with_id(app, "settings", "设置…", true, None::<&str>)?;
     let quit_item = MenuItem::with_id(app, "quit", "退出", true, None::<&str>)?;

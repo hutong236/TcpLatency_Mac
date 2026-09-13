@@ -1,3 +1,4 @@
+mod battery;
 mod commands;
 mod config;
 mod macos_window;
@@ -7,6 +8,7 @@ mod traffic;
 mod tray;
 
 use crate::{
+    battery::battery_guard,
     config::load_config,
     macos_window::{
         apply_floating_window_effect, apply_floating_window_size,
@@ -40,6 +42,7 @@ fn main() {
         .manage(state)
         .invoke_handler(tauri::generate_handler![
             commands::get_config,
+            commands::get_battery,
             commands::get_snapshot,
             commands::get_all_snapshots,
             commands::get_history,
@@ -110,6 +113,12 @@ fn main() {
             let traffic_state = setup_state.clone();
             tauri::async_runtime::spawn(async move {
                 traffic_sampler(traffic_handle, traffic_state).await;
+            });
+
+            let battery_handle = app.handle().clone();
+            let battery_state = setup_state.clone();
+            tauri::async_runtime::spawn(async move {
+                battery_guard(battery_handle, battery_state).await;
             });
 
             Ok(())
