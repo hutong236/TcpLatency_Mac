@@ -20,7 +20,7 @@ if command -v python3 >/dev/null 2>&1; then
 import tomllib
 with open("src-tauri/Cargo.toml", "rb") as f:
     cargo = tomllib.load(f)
-assert cargo["package"]["version"] == "0.12.0"
+assert cargo["package"]["version"] == "0.12.1"
 PYTOML
 else
   echo "WARN: python3 不存在，跳过 JSON/TOML 语法检查"
