@@ -12,7 +12,7 @@
       <div>
         <div class="eyebrow">TCP LATENCY · V0.9.0</div>
         <h1>网络延迟监测</h1>
-        <p>Apple 风格悬浮 HUD · TCP 延时 + 实时上下行流量 · 最近 60 秒趋势</p>
+        <p>Apple 风格悬浮 HUD · 完整连接延时 + 实时上下行流量 · 最近 60 秒趋势</p>
       </div>
       <div id="liveBadge" class="live-badge">-- ms</div>
     </header>
@@ -20,6 +20,7 @@
     <section class="card summary-card">
       <div class="summary">
         <div><span>当前</span><strong id="current">--</strong></div>
+        <div><span>TCP RTT</span><strong id="tcp">--</strong></div>
         <div><span>平均</span><strong id="avg">--</strong></div>
         <div><span>最小</span><strong id="min">--</strong></div>
         <div><span>最大</span><strong id="max">--</strong></div>
@@ -33,7 +34,7 @@
           <b id="chartTitle">最近 60 秒</b>
           <span id="chartSub">等待采样数据…</span>
         </div>
-        <span class="legend">TCP Connect RTT</span>
+        <span class="legend">完整探测耗时（DNS + fallback + TCP）</span>
       </div>
       <div class="chart-wrap">
         <canvas id="historyChart"></canvas>
@@ -71,7 +72,7 @@
       <div class="section-title-row">
         <div>
           <h2>监测目标</h2>
-          <p>DNS 解析先完成，因此图中的延迟不包含 DNS 查询时间。</p>
+          <p>主延时按完整探测耗时计算，包含 DNS 解析、地址 fallback 和最终 TCP 建连；TCP RTT 单独保留用于诊断。</p>
         </div>
         <button id="addTarget" class="secondary">+ 新增目标</button>
       </div>
