@@ -29,6 +29,7 @@ pub(crate) struct ProbeSnapshot {
     pub(crate) port: u16,
     pub(crate) enabled: bool,
     pub(crate) current_ms: Option<f64>,
+    pub(crate) tcp_ms: Option<f64>,
     pub(crate) average_ms: Option<f64>,
     pub(crate) min_ms: Option<f64>,
     pub(crate) max_ms: Option<f64>,
@@ -55,6 +56,7 @@ impl ProbeSnapshot {
             port: target.port,
             enabled: target.enabled,
             current_ms: None,
+            tcp_ms: None,
             average_ms: None,
             min_ms: None,
             max_ms: None,
@@ -399,11 +401,19 @@ pub(crate) fn emit_active_snapshot(app: &AppHandle, state: &SharedState) {
         let _ = tray.set_title(Some(tray_title(&snapshot)));
         let endpoint = snapshot.resolved_address.as_deref().unwrap_or("unresolved");
         let tooltip = format!(
-            "{} · {}:{} · {} · P95 {} · 失败 {:.1}%",
+            "{} · {}:{} · {} · 当前 {} · TCP {} · P95 {} · 失败 {:.1}%",
             snapshot.target_name,
             snapshot.host,
             snapshot.port,
             endpoint,
+            snapshot
+                .current_ms
+                .map(|v| format!("{v:.0}ms"))
+                .unwrap_or_else(|| "--".into()),
+            snapshot
+                .tcp_ms
+                .map(|v| format!("{v:.0}ms"))
+                .unwrap_or_else(|| "--".into()),
             snapshot
                 .p95_ms
                 .map(|v| format!("{v:.0}ms"))
@@ -487,6 +497,7 @@ fn complete_probe(
         port: target.port,
         enabled: target.enabled,
         current_ms: latency,
+        tcp_ms: result.tcp_ms,
         average_ms: avg,
         min_ms: min,
         max_ms: max,

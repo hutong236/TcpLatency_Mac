@@ -55,10 +55,11 @@ Theme                 Follow macOS
 - 每目标独立 Interval / Timeout
 - **Auto / IPv4 / IPv6** 地址族选择
 - Auto 模式下 DNS 返回多个地址时自动 fallback
-- DNS 时间与 TCP Connect RTT 分离
+- 主延时使用完整探测耗时：DNS + 地址 fallback + 最终 TCP 建连
+- 原始 TCP Connect RTT 单独保留用于网络路径诊断
 - 设置页“**立即测试**”，无需保存即可验证 Host / Port
-- 立即测试显示：DNS 耗时、TCP 耗时、实际连接地址、失败原因
-- Current / Avg / Min / Max / **P95** / Jitter / Failure Rate / DNS
+- 立即测试显示：实际延时、TCP RTT、DNS 耗时、实际连接地址、失败原因
+- Current / TCP RTT / Avg / Min / Max / **P95** / Jitter / Failure Rate / DNS
 - `Timeout / Refused / Offline / DNS Timeout / DNS Error / Stale / Disabled / Paused` 状态区分
 - 最近 60 秒趋势图
 - **Stale 检测**：长时间没有新采样时不继续显示旧延迟值
@@ -119,7 +120,7 @@ IPv4    只使用 A / IPv4
 IPv6    只使用 AAAA / IPv6
 ```
 
-整个 DNS + fallback 过程受 Target Timeout 总预算限制，但最终显示的 TCP RTT 仍只统计实际成功连接的 TCP Connect 时间，不把 DNS 时间混进去。
+整个 DNS + fallback 过程受 Target Timeout 总预算限制。主界面和 HUD 的延时现在从探测开始计时，包含 DNS 与前序 fallback 消耗，直到某个地址 TCP 建连成功；最终成功地址自身的 TCP Connect RTT 仍单独保留为诊断指标。
 
 ### 4. Stale
 
@@ -142,7 +143,7 @@ max(5 秒, interval × 3 + timeout)
 成功示例：
 
 ```text
-OK · TCP 23.4ms · DNS 1.2ms · 10.10.10.100:6443
+OK · 实际延时 31.6ms · TCP RTT 23.4ms · DNS 1.2ms · 10.10.10.100:6443
 ```
 
 失败示例：
@@ -163,13 +164,14 @@ Refused · DNS 0.8ms · 10.10.10.20:443 · TCP connection refused
 
 | 指标 | 含义 |
 |---|---|
-| Current | 最近一次成功 TCP Connect RTT |
-| Avg | 最近 60 秒成功样本平均值 |
-| Min / Max | 最近 60 秒成功样本极值 |
-| P95 | 最近 60 秒成功样本 95 分位延迟 |
-| Jitter | 连续成功 RTT 的绝对变化均值 |
+| Current | 最近一次成功探测的完整耗时（DNS + fallback + TCP） |
+| TCP RTT | 最终成功地址本身的 TCP Connect RTT |
+| Avg | 最近 60 秒成功完整探测样本平均值 |
+| Min / Max | 最近 60 秒成功完整探测样本极值 |
+| P95 | 最近 60 秒成功完整探测样本 95 分位延迟 |
+| Jitter | 连续成功完整探测耗时的绝对变化均值 |
 | Failure Rate | 最近 60 秒 TCP Probe 失败比例 |
-| DNS | 最近一次 DNS 解析耗时，不计入 TCP RTT |
+| DNS | 最近一次 DNS 解析耗时；缓存命中时为 0ms |
 
 这里使用 **Failure Rate**，不称为 ICMP “丢包率”，因为 TCP Connect 失败包含 Timeout、Refused、DNS 错误等多种原因。
 

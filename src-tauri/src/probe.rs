@@ -14,7 +14,12 @@ const DNS_CACHE_MAX_ENTRIES: usize = 64;
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct ProbeResult {
+    /// Effective probe latency shown by the HUD/statistics. This is measured
+    /// from the beginning of the probe through DNS resolution and any address
+    /// fallback attempts until a TCP connection succeeds.
     pub(crate) latency_ms: Option<f64>,
+    /// Raw TCP connect RTT for the address that finally succeeded.
+    pub(crate) tcp_ms: Option<f64>,
     pub(crate) dns_ms: Option<f64>,
     pub(crate) resolved_address: Option<String>,
     pub(crate) attempted_addresses: Vec<String>,
@@ -97,6 +102,7 @@ pub(crate) async fn tcp_probe(target: &TargetConfig) -> ProbeResult {
             Err(_) => {
                 return ProbeResult {
                     latency_ms: None,
+                    tcp_ms: None,
                     dns_ms: None,
                     resolved_address: None,
                     attempted_addresses: vec![],
@@ -107,6 +113,7 @@ pub(crate) async fn tcp_probe(target: &TargetConfig) -> ProbeResult {
             Ok(Err(err)) => {
                 return ProbeResult {
                     latency_ms: None,
+                    tcp_ms: None,
                     dns_ms: Some(dns_started.elapsed().as_secs_f64() * 1000.0),
                     resolved_address: None,
                     attempted_addresses: vec![],
@@ -127,6 +134,7 @@ pub(crate) async fn tcp_probe(target: &TargetConfig) -> ProbeResult {
     if addresses.is_empty() {
         return ProbeResult {
             latency_ms: None,
+            tcp_ms: None,
             dns_ms: Some(dns_ms),
             resolved_address: None,
             attempted_addresses,
@@ -155,10 +163,15 @@ pub(crate) async fn tcp_probe(target: &TargetConfig) -> ProbeResult {
                 last_address = Some(addr.to_string());
             }
             Ok(Ok(stream)) => {
-                let latency_ms = connect_started.elapsed().as_secs_f64() * 1000.0;
+                let tcp_ms = connect_started.elapsed().as_secs_f64() * 1000.0;
+                // The user-visible latency must reflect the full work required
+                // for this probe, not only the final successful socket connect.
+                // This includes DNS and time spent on failed fallback addresses.
+                let latency_ms = total_started.elapsed().as_secs_f64() * 1000.0;
                 drop(stream);
                 return ProbeResult {
                     latency_ms: Some(latency_ms),
+                    tcp_ms: Some(tcp_ms),
                     dns_ms: Some(dns_ms),
                     resolved_address: Some(addr.to_string()),
                     attempted_addresses,
@@ -188,6 +201,7 @@ pub(crate) async fn tcp_probe(target: &TargetConfig) -> ProbeResult {
 
     ProbeResult {
         latency_ms: None,
+        tcp_ms: None,
         dns_ms: Some(dns_ms),
         resolved_address: last_address,
         attempted_addresses,

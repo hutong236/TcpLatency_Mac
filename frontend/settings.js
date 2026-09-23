@@ -121,11 +121,12 @@ async function testCurrentTarget() {
   try {
     const result = await invoke('test_target', { target });
     const dns = result.dnsMs == null ? '--' : `${result.dnsMs.toFixed(1)}ms`;
-    const tcp = result.latencyMs == null ? '--' : `${result.latencyMs.toFixed(1)}ms`;
+    const total = result.latencyMs == null ? '--' : `${result.latencyMs.toFixed(1)}ms`;
+    const tcp = result.tcpMs == null ? '--' : `${result.tcpMs.toFixed(1)}ms`;
     const addr = result.resolvedAddress || result.attemptedAddresses?.join(', ') || '--';
     if (result.status === 'ok') {
       resultEl.className = 'test-result success';
-      resultEl.textContent = `OK · TCP ${tcp} · DNS ${dns} · ${addr}`;
+      resultEl.textContent = `OK · 实际延时 ${total} · TCP RTT ${tcp} · DNS ${dns} · ${addr}`;
     } else {
       resultEl.className = 'test-result error';
       resultEl.textContent = `${statusText(result.status)} · DNS ${dns} · ${addr} · ${result.error || '连接失败'}`;
@@ -184,6 +185,7 @@ function renderSnapshot(s) {
   const currentLabel = s.batteryPaused ? 'Battery' : (s.paused ? 'Paused' : (s.currentMs == null ? statusText(s.status) : fmt(s.currentMs)));
   $('liveBadge').textContent = currentLabel;
   $('current').textContent = currentLabel;
+  $('tcp').textContent = fmt(s.tcpMs);
   $('avg').textContent = fmt(s.averageMs);
   $('min').textContent = fmt(s.minMs);
   $('max').textContent = fmt(s.maxMs);
