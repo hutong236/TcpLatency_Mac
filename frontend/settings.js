@@ -418,7 +418,37 @@ async function loadSnapshots() {
   renderTargetRows();
 }
 
+function setupSectionNavigation() {
+  const links = [...document.querySelectorAll('.section-nav a[href^="#"]')];
+  const setActive = id => {
+    for (const link of links) {
+      const active = link.getAttribute('href') === `#${id}`;
+      link.classList.toggle('is-active', active);
+      if (active) link.setAttribute('aria-current', 'location');
+      else link.removeAttribute('aria-current');
+    }
+  };
+  for (const link of links) {
+    link.addEventListener('click', () => setActive(link.hash.slice(1)));
+  }
+  if (!('IntersectionObserver' in window)) {
+    if (links.length) setActive(links[0].hash.slice(1));
+    return;
+  }
+  const observer = new IntersectionObserver(entries => {
+    const visible = entries.filter(entry => entry.isIntersecting)
+      .sort((a, b) => a.boundingClientRect.top - b.boundingClientRect.top);
+    if (visible[0]) setActive(visible[0].target.id);
+  }, { rootMargin: '-85px 0px -65% 0px', threshold: 0 });
+  for (const link of links) {
+    const section = document.getElementById(link.hash.slice(1));
+    if (section) observer.observe(section);
+  }
+  if (links.length) setActive(links[0].hash.slice(1));
+}
+
 async function boot() {
+  setupSectionNavigation();
   config = await invoke('get_config');
   renderConfig();
   $('paused').checked = await invoke('is_paused');
