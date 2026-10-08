@@ -108,7 +108,7 @@ body {
   cursor: grab;
   transform: translateZ(0) scale(0.985);
   opacity: 0;
-  will-change: transform, opacity, box-shadow;
+  will-change: transform, opacity;
   transition:
     transform 180ms cubic-bezier(.2,.8,.2,1),
     box-shadow 180ms ease,
@@ -183,7 +183,9 @@ body.is-ready .floating {
     linear-gradient(110deg, transparent 25%, rgba(255,255,255,var(--sheen-secondary-alpha)) 47%, transparent 68%);
   opacity: .68;
   transform: translate3d(-3%, -2%, 0);
+  /* Ambient motion runs only during active pointer interaction to save energy. */
   animation: glassSheenDrift 8s ease-in-out infinite alternate;
+  animation-play-state: paused;
 }
 
 /* Cursor-reactive refraction highlight. JS only changes two custom props. */
@@ -206,6 +208,7 @@ body.is-ready .floating {
 }
 
 .floating.is-hovered::after { opacity: .95; }
+.floating.is-hovered::before { animation-play-state: running; }
 
 .floating:hover {
   transform: translateZ(0);

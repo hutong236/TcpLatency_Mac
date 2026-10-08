@@ -1,3 +1,5 @@
+> **v0.13.0 — Observatory:** 设置页重构、可访问的目标交互、性能与异步图表优化；完整变更见 [CHANGELOG_V0.13.0.md](CHANGELOG_V0.13.0.md)。
+
 > V0.8: macOS AppKit bridge 已从 deprecated `cocoa 0.26.1` 迁移到 `objc2-app-kit 0.3.2`，并移除 macOS 14 已弃用的 `activateIgnoringOtherApps`。详见 `CHANGELOG_V0.8.md`。
 
 > V0.7.2 hotfix: 关闭透明 NSWindow 的矩形原生阴影，只保留跟随圆角的 CSS 阴影，修复悬浮窗左下/右下角方形阴影残影。详见 `FIX_V0.7.2.md`。

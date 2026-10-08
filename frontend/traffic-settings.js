@@ -1,36 +1,15 @@
 let trafficControlsInstalled = false;
 let catControlsInstalled = false;
 
+// Controls are present in settings.html; no runtime HTML injection or layout shift.
 function installTrafficControls() {
   if (trafficControlsInstalled) return;
-  const section = [...document.querySelectorAll('section.card')]
-    .find(card => card.querySelector('h2')?.textContent?.includes('悬浮窗与启动'));
-  if (!section) return;
-
-  const anchor = section.querySelector('.compact-grid');
-  if (!anchor) return;
-
-  anchor.insertAdjacentHTML('beforebegin', `
-    <label class="toggle-row" id="trafficToggleRow">
-      <span>
-        <b>显示网络流量</b>
-        <small>在延时数字下方显示当前 Mac 实时下载 / 上传速度</small>
-      </span>
-      <input id="floatingShowTraffic" type="checkbox" />
-    </label>
-    <label id="trafficInterfaceRow">流量接口
-      <input id="trafficInterface" placeholder="auto / en0 / utun3" spellcheck="false" autocomplete="off" />
-      <small>推荐使用 auto：跟随当前默认路由接口，避免 VPN 与物理网卡重复统计。</small>
-    </label>
-  `);
-
-  trafficControlsInstalled = true;
-
   const showTraffic = document.getElementById('floatingShowTraffic');
   const trafficInterface = document.getElementById('trafficInterface');
-  showTraffic?.addEventListener('change', syncTrafficControlsToConfig);
-  trafficInterface?.addEventListener('input', syncTrafficControlsToConfig);
-  trafficInterface?.addEventListener('change', syncTrafficControlsToConfig);
+  if (!showTraffic || !trafficInterface) return;
+  trafficControlsInstalled = true;
+  showTraffic.addEventListener('change', syncTrafficControlsToConfig);
+  trafficInterface.addEventListener('input', syncTrafficControlsToConfig);
   document.getElementById('save')?.addEventListener('click', syncTrafficControlsToConfig, true);
 }
 
@@ -59,51 +38,7 @@ function syncTrafficControlsToConfig() {
 
 function installCatControls() {
   if (catControlsInstalled) return;
-  const section = [...document.querySelectorAll('section.card')]
-    .find(card => card.querySelector('h2')?.textContent?.includes('悬浮窗与启动'));
-  const anchor = section?.querySelector('.compact-grid');
-  if (!anchor) return;
-
-  anchor.insertAdjacentHTML('beforebegin', `
-    <div id="networkCatSettings" class="cat-settings-block">
-      <label class="toggle-row">
-        <span>
-          <b>显示网络猫</b>
-          <small>在延迟数字旁显示网络状态动画；关闭后不占用 HUD 空间</small>
-        </span>
-        <input id="networkCatEnabled" type="checkbox" />
-      </label>
-      <label class="toggle-row">
-        <span>
-          <b>网络猫动画</b>
-          <small>关闭后保留静态主题；自定义 GIF/WebP 会冻结为当前帧</small>
-        </span>
-        <input id="networkCatAnimationEnabled" type="checkbox" />
-      </label>
-      <div class="grid two">
-        <label>动画主题
-          <select id="networkCatTheme">
-            <option value="default">Default Cat · 极简轮廓</option>
-            <option value="pixel">Pixel Cat · 8-bit 像素</option>
-            <option value="cyber">Cyber Cat · 科技数据流</option>
-            <option value="custom">Custom · 自定义素材</option>
-          </select>
-        </label>
-        <label id="networkCatFileRow">选择自定义素材
-          <input id="networkCatFile" type="file" accept=".svg,.png,.apng,.webp,.gif,image/svg+xml,image/png,image/webp,image/gif" />
-          <small>支持 SVG / PNG / APNG / WebP / GIF，最大 8MB；会复制到应用配置目录。</small>
-        </label>
-      </div>
-      <label id="networkCatPathRow">自定义素材路径
-        <input id="networkCatCustomAsset" placeholder="选择文件后自动填写，也可手工输入绝对路径" spellcheck="false" autocomplete="off" />
-      </label>
-      <div class="target-actions">
-        <button id="testCatAsset" class="secondary" type="button">测试素材</button>
-        <span id="catAssetResult" class="test-result">网络猫融合状态会同时参考延迟、抖动、失败率和实时流量。</span>
-      </div>
-    </div>
-  `);
-
+  if (!document.getElementById('networkCatSettings')) return;
   catControlsInstalled = true;
   for (const id of ['networkCatEnabled', 'networkCatAnimationEnabled', 'networkCatTheme', 'networkCatCustomAsset']) {
     document.getElementById(id)?.addEventListener('change', () => {
@@ -231,8 +166,6 @@ async function testCatAsset() {
 async function bootTrafficSettings() {
   installTrafficControls();
   installCatControls();
-  const eyebrow = document.querySelector('.eyebrow');
-  if (eyebrow) eyebrow.textContent = 'TCP LATENCY · V0.12.0';
   const initialConfig = await invoke('get_config');
   renderTrafficControls(initialConfig);
   renderCatControls(initialConfig);

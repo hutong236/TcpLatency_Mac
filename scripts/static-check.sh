@@ -9,6 +9,8 @@ if command -v node >/dev/null 2>&1; then
   node --check frontend/traffic-settings.js
   node --check frontend/traffic-floating.js
   node --check frontend/cat-floating.js
+  node --check scripts/ui-audit.mjs
+  node scripts/ui-audit.mjs
 else
   echo "WARN: node 不存在，跳过 JavaScript 语法检查"
 fi
@@ -20,13 +22,13 @@ if command -v python3 >/dev/null 2>&1; then
 import tomllib
 with open("src-tauri/Cargo.toml", "rb") as f:
     cargo = tomllib.load(f)
-assert cargo["package"]["version"] == "0.12.1"
+assert cargo["package"]["version"] == "0.13.0"
 PYTOML
 else
   echo "WARN: python3 不存在，跳过 JSON/TOML 语法检查"
 fi
 
-grep -q '"version": "0.12.1"' src-tauri/tauri.conf.json
+grep -q '"version": "0.13.0"' src-tauri/tauri.conf.json
 grep -q '"shadow": false' src-tauri/tauri.conf.json
 
 # Backend module boundaries: main.rs should only assemble the application.
