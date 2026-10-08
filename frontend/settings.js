@@ -519,7 +519,8 @@ async function boot() {
 
   $('save').addEventListener('click', () => save(true, true));
   document.addEventListener('input', event => {
-    if (event.target.closest('input, select')) setDirty(true);
+    if (!event.target.closest('input, select')) return;
+    if (!['activeTarget', 'paused', 'mousePassthrough'].includes(event.target.id)) setDirty(true);
   });
   document.addEventListener('change', event => {
     const id = event.target.id;
