@@ -9,6 +9,8 @@ if command -v node >/dev/null 2>&1; then
   node --check frontend/traffic-settings.js
   node --check frontend/traffic-floating.js
   node --check frontend/cat-floating.js
+  node --check scripts/ui-audit.mjs
+  node scripts/ui-audit.mjs
 else
   echo "WARN: node 不存在，跳过 JavaScript 语法检查"
 fi
