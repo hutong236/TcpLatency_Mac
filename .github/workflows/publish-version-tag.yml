@@ -1,0 +1,89 @@
+name: Publish version tag
+
+# A version bump merged to main creates one immutable release tag.
+# Tag pushes made with GITHUB_TOKEN do not trigger ordinary push workflows,
+# so we explicitly dispatch the existing macOS release workflow.
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'src-tauri/Cargo.toml'
+      - 'src-tauri/tauri.conf.json'
+
+permissions:
+  contents: write
+  actions: write
+
+concurrency:
+  group: publish-version-tag
+  cancel-in-progress: false
+
+jobs:
+  tag-and-dispatch:
+    name: Create tag and dispatch macOS release
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout main and tags
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Check matching versions and tag state
+        id: version
+        shell: bash
+        run: |
+          set -euo pipefail
+          VERSION="$(python3 - <<'PY'
+          import json
+          import pathlib
+          import re
+
+          tauri = json.loads(pathlib.Path("src-tauri/tauri.conf.json").read_text())
+          cargo = pathlib.Path("src-tauri/Cargo.toml").read_text()
+          package = cargo.split("[package]", 1)[1].split("[", 1)[0]
+          match = re.search(r'^version\s*=\s*"([^"]+)"', package, re.MULTILINE)
+          if not match:
+              raise SystemExit("Cannot find Cargo package version")
+          version = match.group(1)
+          if version != tauri["version"]:
+              raise SystemExit(f"Cargo {version} differs from Tauri {tauri['version']}")
+          if not re.fullmatch(r'\d+\.\d+\.\d+', version):
+              raise SystemExit(f"Unsupported release version: {version}")
+          print(version)
+          PY
+          )"
+          TAG="v${VERSION}"
+          echo "tag=${TAG}" >> "${GITHUB_OUTPUT}"
+          if git show-ref --verify --quiet "refs/tags/${TAG}"; then
+            echo "Tag ${TAG} already exists; skip creation and dispatch."
+            echo "new_tag=false" >> "${GITHUB_OUTPUT}"
+          else
+            echo "Tag ${TAG} is new."
+            echo "new_tag=true" >> "${GITHUB_OUTPUT}"
+          fi
+
+      - name: Create signed-off annotated version tag
+        if: steps.version.outputs.new_tag == 'true'
+        env:
+          RELEASE_TAG: ${{ steps.version.outputs.tag }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag -a "${RELEASE_TAG}" -m "TCP Latency ${RELEASE_TAG} — Observatory UX"
+          git push origin "refs/tags/${RELEASE_TAG}"
+
+      - name: Dispatch universal macOS release build
+        if: steps.version.outputs.new_tag == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ steps.version.outputs.tag }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh workflow run release-macos.yml --ref main --field "release_tag=${RELEASE_TAG}"
+          echo "Dispatched release build for ${RELEASE_TAG}"
