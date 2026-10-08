@@ -634,8 +634,8 @@ async function save(showSuccess = true, updateForm = true) {
     snapshots.set(active.targetId, active);
     renderSnapshot(active);
     queueChart(true);
+    setDirty(false);
     if (showSuccess) showMessage('配置已保存');
-    else setDirty(false);
     return true;
   } catch (err) {
     showMessage(String(err), true);
