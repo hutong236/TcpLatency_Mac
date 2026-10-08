@@ -62,9 +62,9 @@ function statusClass(snapshot) {
 }
 
 function escapeHtml(text) {
-  const div = document.createElement('div');
-  div.textContent = String(text ?? '');
-  return div.innerHTML;
+  // Safe for both text nodes and quoted HTML attributes in the target table.
+  const entities = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' };
+  return String(text ?? '').replace(/[&<>"']/g, char => entities[char]);
 }
 
 function uniqueId() {
