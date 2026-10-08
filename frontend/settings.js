@@ -4,8 +4,33 @@ const listen = window.__TAURI__.event.listen;
 const $ = id => document.getElementById(id);
 let config;
 let snapshots = new Map();
-let chartQueued = false;
+let chartTimer = 0;
+let chartGeneration = 0;
 let targetRowsFrame = 0;
+let switchingTarget = false;
+const MESSAGE_IDLE = '所有更改均保存在本机';
+
+function setDirty(isDirty) {
+  const saveButton = $('save');
+  if (saveButton) saveButton.classList.toggle('is-dirty', isDirty);
+  const message = $('message');
+  if (message && !message.classList.contains('error')) {
+    message.textContent = isDirty ? '有尚未保存的更改' : MESSAGE_IDLE;
+    message.className = isDirty ? 'pending' : '';
+  }
+}
+
+function validateTargetForm() {
+  for (const id of ['name', 'host', 'port', 'intervalMs', 'timeoutMs']) {
+    const field = $(id);
+    if (!field.value.trim() || !field.checkValidity()) {
+      showMessage('请检查目标名称、地址及端口 / 时间范围', true);
+      field.focus();
+      return false;
+    }
+  }
+  return true;
+}
 
 function fmt(value, suffix = ' ms') {
   return value == null ? '--' : `${Math.round(value * 10) / 10}${suffix}`;
@@ -116,6 +141,7 @@ async function testCurrentTarget() {
   const button = $('testTarget');
   const resultEl = $('testResult');
   button.disabled = true;
+  button.setAttribute('aria-busy', 'true');
   resultEl.className = 'test-result';
   resultEl.textContent = '正在解析 DNS 并建立 TCP 连接…';
   try {
@@ -136,6 +162,7 @@ async function testCurrentTarget() {
     resultEl.textContent = String(err);
   } finally {
     button.disabled = false;
+    button.removeAttribute('aria-busy');
   }
 }
 
@@ -183,7 +210,12 @@ function renderBatteryStatus(b) {
 
 function renderSnapshot(s) {
   const currentLabel = s.batteryPaused ? 'Battery' : (s.paused ? 'Paused' : (s.currentMs == null ? statusText(s.status) : fmt(s.currentMs)));
-  $('liveBadge').textContent = currentLabel;
+  const badge = $('liveBadge');
+  badge.textContent = currentLabel;
+  badge.className = 'live-badge';
+  const severity = statusClass(s);
+  if (severity) badge.classList.add(severity);
+  badge.setAttribute('aria-label', `当前主目标：${s.targetName || s.host || '--'}，${currentLabel}`);
   $('current').textContent = currentLabel;
   $('tcp').textContent = fmt(s.tcpMs);
   $('avg').textContent = fmt(s.averageMs);
@@ -219,7 +251,7 @@ function renderTargetRows() {
     const status = statusText(s.status, s.paused);
     const active = target.id === config.activeTargetId ? ' active' : '';
     return `<tr data-target-id="${escapeHtml(target.id)}" class="${active.trim()}">
-      <td><span class="target-name"><i class="target-dot ${cls}"></i>${escapeHtml(target.name)}</span></td>
+      <td><span class="target-name"><button type="button" class="target-select" data-select-target="${escapeHtml(target.id)}" aria-label="设为主目标：${escapeHtml(target.name)}" aria-pressed="${target.id === config.activeTargetId}"><i class="target-dot ${cls}" aria-hidden="true"></i>${escapeHtml(target.name)}</button></span></td>
       <td>${escapeHtml(target.host)}:${target.port}</td>
       <td>${escapeHtml(current)}</td>
       <td>${escapeHtml(fmt(s.averageMs))}</td>
@@ -229,20 +261,8 @@ function renderTargetRows() {
   }).join('');
   $('targetRows').innerHTML = rows || '<tr><td colspan="6">暂无目标</td></tr>';
 
-  for (const row of $('targetRows').querySelectorAll('[data-target-id]')) {
-    row.addEventListener('click', async () => {
-      const id = row.dataset.targetId;
-      if (!id || id === config.activeTargetId) return;
-      updateActiveTargetFromForm();
-      config.activeTargetId = id;
-      await save(false, false);
-      loadActiveTargetForm();
-      const snapshot = snapshots.get(id);
-      if (snapshot) renderSnapshot(snapshot);
-      renderTargetRows();
-      queueChart(true);
-    });
-  }
+  // Event delegation avoids rebuilding one listener for every target on each sample.
+
 }
 
 function queueTargetRows() {
@@ -254,20 +274,22 @@ function queueTargetRows() {
 }
 
 function chartColors() {
-  const style = getComputedStyle(document.documentElement);
+  const style = getComputedStyle(document.querySelector('.summary-card'));
   return {
-    accent: style.getPropertyValue('--accent').trim(),
-    danger: style.getPropertyValue('--danger').trim(),
-    muted: style.getPropertyValue('--muted').trim(),
-    grid: style.getPropertyValue('--canvas-grid').trim(),
-    text: style.getPropertyValue('--text').trim(),
+    accent: style.getPropertyValue('--chart-line').trim() || '#86bfff',
+    danger: style.getPropertyValue('--chart-failure').trim() || '#ff8494',
+    muted: style.getPropertyValue('--chart-label').trim() || '#9fb3ce',
+    grid: style.getPropertyValue('--chart-grid').trim() || 'rgba(224,238,255,.12)',
   };
 }
 
 async function drawHistory() {
-  chartQueued = false;
-  if (!config?.activeTargetId) return;
-  const points = await invoke('get_history', { targetId: config.activeTargetId });
+  const requestedTarget = config?.activeTargetId;
+  if (!requestedTarget || document.hidden) return;
+  const generation = ++chartGeneration;
+  const points = await invoke('get_history', { targetId: requestedTarget });
+  // An older asynchronous history response must never replace the new target.
+  if (generation !== chartGeneration || config?.activeTargetId !== requestedTarget || document.hidden) return;
   const canvas = $('historyChart');
   const wrap = canvas.parentElement;
   const rect = wrap.getBoundingClientRect();
@@ -318,27 +340,52 @@ async function drawHistory() {
   const xFor = ts => left + Math.max(0, Math.min(1, (Number(ts) - start) / 60000)) * plotW;
   const yFor = ms => top + (1 - Math.min(1, ms / yMax)) * plotH;
 
-  ctx.strokeStyle = colors.accent;
-  ctx.lineWidth = 1.8;
-  ctx.lineJoin = 'round';
-  ctx.lineCap = 'round';
-  let drawing = false;
-  ctx.beginPath();
-  for (const p of points) {
-    if (p.latencyMs == null) {
-      drawing = false;
-      continue;
-    }
-    const x = xFor(p.timestampMs);
-    const y = yFor(p.latencyMs);
-    if (!drawing) {
-      ctx.moveTo(x, y);
-      drawing = true;
+  const runs = [];
+  let currentRun = [];
+  for (const point of points) {
+    if (point.latencyMs == null) {
+      if (currentRun.length) runs.push(currentRun);
+      currentRun = [];
     } else {
-      ctx.lineTo(x, y);
+      currentRun.push({ x: xFor(point.timestampMs), y: yFor(point.latencyMs) });
     }
   }
-  ctx.stroke();
+  if (currentRun.length) runs.push(currentRun);
+
+  const shade = ctx.createLinearGradient(0, top, 0, top + plotH);
+  shade.addColorStop(0, 'rgba(134,191,255,.22)');
+  shade.addColorStop(1, 'rgba(134,191,255,0)');
+  for (const run of runs) {
+    if (run.length > 1) {
+      ctx.beginPath();
+      ctx.moveTo(run[0].x, top + plotH);
+      for (const p of run) ctx.lineTo(p.x, p.y);
+      ctx.lineTo(run[run.length - 1].x, top + plotH);
+      ctx.closePath();
+      ctx.fillStyle = shade;
+      ctx.fill();
+    }
+    ctx.beginPath();
+    run.forEach((p, i) => i ? ctx.lineTo(p.x, p.y) : ctx.moveTo(p.x, p.y));
+    ctx.strokeStyle = colors.accent;
+    ctx.lineWidth = 2;
+    ctx.lineJoin = 'round';
+    ctx.lineCap = 'round';
+    ctx.stroke();
+  }
+  const lastRun = runs[runs.length - 1];
+  const latest = lastRun?.[lastRun.length - 1];
+  if (latest) {
+    ctx.beginPath();
+    ctx.arc(latest.x, latest.y, 3.1, 0, 2 * Math.PI);
+    ctx.fillStyle = colors.accent;
+    ctx.fill();
+    ctx.beginPath();
+    ctx.arc(latest.x, latest.y, 5.8, 0, 2 * Math.PI);
+    ctx.strokeStyle = 'rgba(134,191,255,.28)';
+    ctx.lineWidth = 2;
+    ctx.stroke();
+  }
 
   ctx.strokeStyle = colors.danger;
   ctx.lineWidth = 1.5;
@@ -355,9 +402,14 @@ async function drawHistory() {
 }
 
 function queueChart(force = false) {
-  if (chartQueued && !force) return;
-  chartQueued = true;
-  setTimeout(() => drawHistory().catch(err => console.error(err)), force ? 0 : 150);
+  if (chartTimer) {
+    if (!force) return;
+    clearTimeout(chartTimer);
+  }
+  chartTimer = setTimeout(() => {
+    chartTimer = 0;
+    drawHistory().catch(err => console.error('History chart:', err));
+  }, force ? 0 : 150);
 }
 
 async function loadSnapshots() {
@@ -379,14 +431,32 @@ async function boot() {
   renderTargetRows();
   queueChart(true);
 
-  $('activeTarget').addEventListener('change', async () => {
+  async function selectTarget(id) {
+    if (!id || id === config.activeTargetId || switchingTarget) return;
+    switchingTarget = true;
+    const oldId = config.activeTargetId;
     updateActiveTargetFromForm();
-    config.activeTargetId = $('activeTarget').value;
-    await save(false, false);
-    loadActiveTargetForm();
-    const snapshot = snapshots.get(config.activeTargetId);
-    if (snapshot) renderSnapshot(snapshot);
-    queueChart(true);
+    config.activeTargetId = id;
+    try {
+      const ok = await save(false, false);
+      if (!ok) {
+        config.activeTargetId = oldId;
+        $('activeTarget').value = oldId;
+        renderTargetRows();
+        return;
+      }
+      const snapshot = snapshots.get(id);
+      if (snapshot) renderSnapshot(snapshot);
+      queueChart(true);
+    } finally {
+      switchingTarget = false;
+    }
+  }
+
+  $('activeTarget').addEventListener('change', () => selectTarget($('activeTarget').value));
+  $('targetRows').addEventListener('click', event => {
+    const row = event.target.closest('[data-target-id]');
+    if (row) selectTarget(row.dataset.targetId);
   });
 
   for (const id of ['name', 'host', 'port', 'intervalMs', 'timeoutMs', 'addressFamily', 'targetEnabled']) {
@@ -409,6 +479,7 @@ async function boot() {
     config.activeTargetId = id;
     refreshTargetSelect();
     renderTargetRows();
+    setDirty(true);
   });
 
   $('deleteTarget').addEventListener('click', () => {
@@ -423,6 +494,7 @@ async function boot() {
     refreshTargetSelect();
     renderTargetRows();
     queueChart(true);
+    setDirty(true);
   });
 
   $('paused').addEventListener('change', async () => {
@@ -446,6 +518,13 @@ async function boot() {
   $('floatingBackgroundMode').addEventListener('change', updateFloatingRangeLabels);
 
   $('save').addEventListener('click', () => save(true, true));
+  document.addEventListener('input', event => {
+    if (event.target.closest('input, select')) setDirty(true);
+  });
+  document.addEventListener('change', event => {
+    const id = event.target.id;
+    if (id && !['activeTarget', 'paused', 'mousePassthrough'].includes(id)) setDirty(true);
+  });
 
   // The active probe emits both target-update (for the table) and
   // latency-update (for the active summary/HUD). Table refreshes are batched
@@ -454,9 +533,11 @@ async function boot() {
     const s = event.payload;
     const previous = snapshots.get(s.targetId);
     snapshots.set(s.targetId, s);
-    renderSnapshot(s);
+    if (s.targetId === config.activeTargetId) {
+      renderSnapshot(s);
+      queueChart();
+    }
     if (previous?.paused !== s.paused) queueTargetRows();
-    queueChart();
   });
 
   await listen('target-update', event => {
@@ -480,10 +561,17 @@ async function boot() {
   await listen('battery-update', event => renderBatteryStatus(event.payload));
 
   window.addEventListener('resize', () => queueChart(true));
+  document.addEventListener('visibilitychange', () => {
+    if (!document.hidden) queueChart(true);
+  });
 }
 
 async function save(showSuccess = true, updateForm = true) {
+  if (updateForm && !validateTargetForm()) return false;
   if (updateForm) updateActiveTargetFromForm();
+  const button = $('save');
+  button.disabled = true;
+  button.setAttribute('aria-busy', 'true');
   config.showFloating = $('showFloating').checked;
   config.mousePassthrough = $('mousePassthrough').checked;
   config.floatingShowTarget = $('floatingShowTarget').checked;
@@ -515,19 +603,26 @@ async function save(showSuccess = true, updateForm = true) {
     snapshots.set(active.targetId, active);
     renderSnapshot(active);
     queueChart(true);
-    if (showSuccess) showMessage('已保存');
+    if (showSuccess) showMessage('配置已保存');
+    else setDirty(false);
     return true;
   } catch (err) {
     showMessage(String(err), true);
     return false;
+  } finally {
+    button.disabled = false;
+    button.removeAttribute('aria-busy');
   }
 }
 
 function showMessage(text, error = false) {
   $('message').textContent = text;
-  $('message').className = error ? 'error' : '';
+  $('message').className = error ? 'error' : 'success';
   clearTimeout(showMessage.timer);
-  showMessage.timer = setTimeout(() => { $('message').textContent = ''; }, 3500);
+  showMessage.timer = setTimeout(() => {
+    $('message').textContent = error ? '请修正后重试' : MESSAGE_IDLE;
+    $('message').className = error ? 'error' : '';
+  }, 3500);
 }
 
 boot().catch(err => showMessage(String(err), true));
