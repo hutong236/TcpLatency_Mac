@@ -1,3 +1,30 @@
+
+## 网络探测准确性：TCP / SSH / HTTP(S) 分层验证（开发分支）
+
+本次新增按目标选择的探测模式，避免将 TCP 三次握手直接等同于服务健康：
+
+| 模式 | 判定标准 | 主延时口径 |
+|---|---|---|
+| TCP | TCP 建连成功，**不能证明业务可用** | DNS + 地址回退 + TCP 建连 |
+| SSH | 建连后收到 SSH-2.0 / SSH-1.99 格式的协议标识 | DNS + TCP + SSH 标识 |
+| HTTP | 收到 **2xx** HTTP 响应头 | 从发起请求到收到响应头的总耗时 |
+| HTTPS | TLS 证书正常验证且收到 **2xx** HTTP 响应头 | 从发起请求到收到响应头的总耗时（含 TLS） |
+
+HTTP(S) 每次创建独立客户端，不重用空闲连接、不跟随跳转，也不读取代理环境变量。对需要鉴权或返回 3xx/401 的站点，请使用返回 2xx 的健康检查路径（默认 /）。HTTP(S) 不能可靠分离内部分阶段的 TCP RTT 或独立 DNS 时间，面板会显示 --。SSH 标识验证不是 SSH 身份认证或主机密钥验证。
+
+macOS 使用 route -n get 查询**已连接地址**的路由接口，并缓存 60 秒。发现 utun 时提示存在 TUN/VPN 路径：这**不是**代理提前完成握手的证据。HTTP(S) 的远端地址为客户端观察到的连接对端，不保证透明代理环境下就是最终源站。本次仍未实现 ICMP，TCP 建连耗时也不等于 Ping RTT。
+
+### 复现与回归测试
+
+1. 选择 **TCP**，监控应显示 TCP Connected，即使目标端口握手后立刻关闭。
+2. 选择 **SSH**，只有读到合法 SSH 标识才显示 SSH Verified；HTTP 服务、无 SSH 标识的代理连接不再判成功。
+3. 选择 **HTTP**，返回 503 的 /health 应显示 HTTP Error；返回 204 应显示 HTTP Verified。
+4. 选择 **HTTPS**，证书校验失败时不应显示可用；证书正确且返回 2xx 才显示 HTTPS Verified。
+5. 在 Clash Verge TUN 开启时对比目标路由和测试结果接口；关闭 TUN 后重复测试。
+6. 切换目标协议或 HTTP 路径时清空近期统计，避免新旧口径混算。
+
+可在 macOS 执行 ./scripts/static-check.sh 与 cd src-tauri && cargo test。
+
 > **v0.13.0 — Observatory:** 设置页重构、可访问的目标交互、性能与异步图表优化；完整变更见 [CHANGELOG_V0.13.0.md](CHANGELOG_V0.13.0.md)。
 
 > V0.8: macOS AppKit bridge 已从 deprecated `cocoa 0.26.1` 迁移到 `objc2-app-kit 0.3.2`，并移除 macOS 14 已弃用的 `activateIgnoringOtherApps`。详见 `CHANGELOG_V0.8.md`。
