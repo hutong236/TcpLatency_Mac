@@ -560,7 +560,7 @@ fn complete_probe(
     let recovery = if config.notifications_enabled && config.notify_recovery {
         match recovered_kind {
             Some("failure") => Some(AlertRequest {
-                title: format!("{} 已恢复", target.name),
+                title: format!("{} {} 验证恢复", target.name, target.probe_mode.to_ascii_uppercase()),
                 body: format!(
                     "{}:{} 已恢复可达，当前 {:.0} ms",
                     target.host,
@@ -594,7 +594,7 @@ fn complete_probe(
         runtime.last_notification_ms = now;
         runtime.incident = Some("failure".into());
         Some(AlertRequest {
-            title: format!("{} 不可达", target.name),
+            title: format!("{} {} 探测失败", target.name, target.probe_mode.to_ascii_uppercase()),
             body: format!(
                 "{}:{} 已连续 {} 次 {} 探测失败（{}）",
                 target.host, target.port, runtime.consecutive_failure,
