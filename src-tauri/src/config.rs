@@ -22,6 +22,12 @@ fn default_notification_cooldown_sec() -> u64 {
 fn default_address_family() -> String {
     "auto".into()
 }
+fn default_probe_mode() -> String {
+    "tcp".into()
+}
+fn default_http_path() -> String {
+    "/".into()
+}
 fn default_floating_opacity() -> f64 {
     0.82
 }
@@ -59,6 +65,10 @@ pub(crate) struct TargetConfig {
     pub(crate) enabled: bool,
     #[serde(default = "default_address_family")]
     pub(crate) address_family: String,
+    #[serde(default = "default_probe_mode")]
+    pub(crate) probe_mode: String,
+    #[serde(default = "default_http_path")]
+    pub(crate) http_path: String,
 }
 
 impl Default for TargetConfig {
@@ -72,6 +82,8 @@ impl Default for TargetConfig {
             timeout_ms: default_timeout_ms(),
             enabled: true,
             address_family: default_address_family(),
+            probe_mode: default_probe_mode(),
+            http_path: default_http_path(),
         }
     }
 }
@@ -195,10 +207,12 @@ impl AppConfig {
 
 pub(crate) fn endpoint_key(target: &TargetConfig) -> String {
     format!(
-        "{}:{}:{}",
+        "{}:{}:{}:{}:{}",
         target.host.trim().to_ascii_lowercase(),
         target.port,
-        target.address_family.trim().to_ascii_lowercase()
+        target.address_family.trim().to_ascii_lowercase(),
+        target.probe_mode.trim().to_ascii_lowercase(),
+        target.http_path.trim()
     )
 }
 
@@ -309,6 +323,20 @@ pub(crate) fn validate_config(mut config: AppConfig) -> Result<AppConfig, String
         target.address_family = target.address_family.trim().to_ascii_lowercase();
         if !matches!(target.address_family.as_str(), "auto" | "ipv4" | "ipv6") {
             return Err(format!("{} 的地址族必须是 auto / ipv4 / ipv6", target.name));
+        }
+        target.probe_mode = target.probe_mode.trim().to_ascii_lowercase();
+        if !matches!(target.probe_mode.as_str(), "tcp" | "ssh" | "http" | "https") {
+            return Err(format!("{} 的探测协议必须是 tcp / ssh / http / https", target.name));
+        }
+        target.http_path = target.http_path.trim().to_string();
+        if !target.http_path.starts_with('/') ||
+            target.http_path.len() > 512 ||
+            target.http_path.chars().any(char::is_control) {
+            return Err(format!("{} 的 HTTP 路径必须以 / 开头、不能包含控制字符且不超过 512 字节", target.name));
+        }
+        if target.host.chars().any(|ch| ch.is_control() || ch.is_whitespace()) ||
+           target.host.contains('/') || target.host.contains('@') {
+            return Err(format!("{} 的 Host 必须是主机名或 IP，不支持 URL", target.name));
         }
     }
 
