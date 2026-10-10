@@ -2,11 +2,11 @@ use crate::config::{endpoint_key, TargetConfig};
 use serde::Serialize;
 use std::{
     collections::HashMap,
-    net::SocketAddr,
+    net::{IpAddr, SocketAddr},
     sync::{Mutex, OnceLock},
     time::{Duration, Instant},
 };
-use tokio::net::{lookup_host, TcpStream};
+use tokio::{io::AsyncReadExt, net::{lookup_host, TcpStream}};
 
 const DNS_CACHE_TTL: Duration = Duration::from_secs(30);
 const DNS_CACHE_MAX_ENTRIES: usize = 64;
@@ -25,6 +25,11 @@ pub(crate) struct ProbeResult {
     pub(crate) attempted_addresses: Vec<String>,
     pub(crate) status: String,
     pub(crate) error: Option<String>,
+    /// What was actually verified: TCP handshake, SSH banner, or HTTP response.
+    pub(crate) probe_mode: String,
+    pub(crate) response_detail: Option<String>,
+    /// OS route for the observed peer; utun is a warning, not proof of interception.
+    pub(crate) route_interface: Option<String>,
 }
 
 #[derive(Clone)]
@@ -34,6 +39,8 @@ struct DnsCacheEntry {
 }
 
 static DNS_CACHE: OnceLock<Mutex<HashMap<String, DnsCacheEntry>>> = OnceLock::new();
+const ROUTE_CACHE_TTL: Duration = Duration::from_secs(60);
+static ROUTE_CACHE: OnceLock<Mutex<HashMap<IpAddr, (Instant, Option<String>)>>> = OnceLock::new();
 
 fn dns_cache() -> &'static Mutex<HashMap<String, DnsCacheEntry>> {
     DNS_CACHE.get_or_init(|| Mutex::new(HashMap::new()))
@@ -83,6 +90,14 @@ fn normalize_addresses(mut addresses: Vec<SocketAddr>, family: &str) -> Vec<Sock
     addresses
 }
 
+/// Dispatch by required verification level. A TCP handshake is not application health.
+pub(crate) async fn probe_target(target: &TargetConfig) -> ProbeResult {
+    match target.probe_mode.as_str() {
+        "http" | "https" => http_probe(target).await,
+        _ => tcp_probe(target).await,
+    }
+}
+
 pub(crate) async fn tcp_probe(target: &TargetConfig) -> ProbeResult {
     let total_timeout = Duration::from_millis(target.timeout_ms);
     let total_started = Instant::now();
@@ -101,6 +116,9 @@ pub(crate) async fn tcp_probe(target: &TargetConfig) -> ProbeResult {
         let raw_addresses: Vec<SocketAddr> = match lookup {
             Err(_) => {
                 return ProbeResult {
+                    probe_mode: target.probe_mode.clone(),
+                    response_detail: None,
+                    route_interface: None,
                     latency_ms: None,
                     tcp_ms: None,
                     dns_ms: None,
@@ -112,6 +130,9 @@ pub(crate) async fn tcp_probe(target: &TargetConfig) -> ProbeResult {
             }
             Ok(Err(err)) => {
                 return ProbeResult {
+                    probe_mode: target.probe_mode.clone(),
+                    response_detail: None,
+                    route_interface: None,
                     latency_ms: None,
                     tcp_ms: None,
                     dns_ms: Some(dns_started.elapsed().as_secs_f64() * 1000.0),
@@ -130,9 +151,12 @@ pub(crate) async fn tcp_probe(target: &TargetConfig) -> ProbeResult {
         (addresses, dns_ms, false)
     };
 
-    let attempted_addresses: Vec<String> = addresses.iter().map(ToString::to_string).collect();
+    let mut attempted_addresses: Vec<String> = Vec::new();
     if addresses.is_empty() {
         return ProbeResult {
+                    probe_mode: target.probe_mode.clone(),
+                    response_detail: None,
+                    route_interface: None,
             latency_ms: None,
             tcp_ms: None,
             dns_ms: Some(dns_ms),
@@ -154,6 +178,7 @@ pub(crate) async fn tcp_probe(target: &TargetConfig) -> ProbeResult {
             last_error = Some("TCP connect timeout".into());
             break;
         }
+        attempted_addresses.push(addr.to_string());
         let remaining = total_timeout.saturating_sub(elapsed_total);
         let connect_started = Instant::now();
         match tokio::time::timeout(remaining, TcpStream::connect(addr)).await {
@@ -162,14 +187,52 @@ pub(crate) async fn tcp_probe(target: &TargetConfig) -> ProbeResult {
                 last_error = Some(format!("TCP connect timeout: {addr}"));
                 last_address = Some(addr.to_string());
             }
-            Ok(Ok(stream)) => {
+            Ok(Ok(mut stream)) => {
                 let tcp_ms = connect_started.elapsed().as_secs_f64() * 1000.0;
-                // The user-visible latency must reflect the full work required
-                // for this probe, not only the final successful socket connect.
-                // This includes DNS and time spent on failed fallback addresses.
+                let mut response_detail = None;
+                if target.probe_mode == "ssh" {
+                    let remaining = total_timeout.saturating_sub(total_started.elapsed());
+                    let verification = tokio::time::timeout(remaining, verify_ssh_banner(&mut stream)).await;
+                    match verification {
+                        Ok(Ok(banner)) => response_detail = Some(banner),
+                        Ok(Err(reason)) => {
+                            return ProbeResult {
+                                probe_mode: target.probe_mode.clone(),
+                                response_detail: None,
+                                route_interface: route_interface_for(addr).await,
+                                latency_ms: None,
+                                tcp_ms: Some(tcp_ms),
+                                dns_ms: Some(dns_ms),
+                                resolved_address: Some(addr.to_string()),
+                                attempted_addresses,
+                                status: "protocol_error".into(),
+                                error: Some(reason),
+                            };
+                        }
+                        Err(_) => {
+                            return ProbeResult {
+                                probe_mode: target.probe_mode.clone(),
+                                response_detail: None,
+                                route_interface: route_interface_for(addr).await,
+                                latency_ms: None,
+                                tcp_ms: Some(tcp_ms),
+                                dns_ms: Some(dns_ms),
+                                resolved_address: Some(addr.to_string()),
+                                attempted_addresses,
+                                status: "timeout".into(),
+                                error: Some("TCP 已建连，但等待 SSH 协议标识超时".into()),
+                            };
+                        }
+                    }
+                }
+                // Stop timing before collecting optional diagnostics.
                 let latency_ms = total_started.elapsed().as_secs_f64() * 1000.0;
                 drop(stream);
+                let route_interface = route_interface_for(addr).await;
                 return ProbeResult {
+                    probe_mode: target.probe_mode.clone(),
+                    response_detail,
+                    route_interface,
                     latency_ms: Some(latency_ms),
                     tcp_ms: Some(tcp_ms),
                     dns_ms: Some(dns_ms),
@@ -200,6 +263,9 @@ pub(crate) async fn tcp_probe(target: &TargetConfig) -> ProbeResult {
     }
 
     ProbeResult {
+        probe_mode: target.probe_mode.clone(),
+        response_detail: None,
+        route_interface: None,
         latency_ms: None,
         tcp_ms: None,
         dns_ms: Some(dns_ms),
@@ -207,6 +273,154 @@ pub(crate) async fn tcp_probe(target: &TargetConfig) -> ProbeResult {
         attempted_addresses,
         status: last_status,
         error: last_error,
+    }
+}
+
+
+async fn verify_ssh_banner(stream: &mut TcpStream) -> Result<String, String> {
+    // RFC 4253 allows informational lines before the SSH identification string.
+    // Never count a bare TCP SYN/ACK as successful SSH verification.
+    let mut collected = Vec::with_capacity(256);
+    let mut buf = [0u8; 512];
+    loop {
+        let size = stream.read(&mut buf).await
+            .map_err(|err| format!("读取 SSH 标识失败: {err}"))?;
+        if size == 0 {
+            return Err("TCP 已连接，但服务未发送 SSH 协议标识".into());
+        }
+        collected.extend_from_slice(&buf[..size]);
+        if collected.len() > 8192 {
+            return Err("SSH 服务标识超过安全读取上限".into());
+        }
+        while let Some(pos) = collected.iter().position(|byte| *byte == b'\n') {
+            let line = collected.drain(..=pos).collect::<Vec<_>>();
+            let text = String::from_utf8_lossy(&line);
+            let banner = text.trim_end_matches(['\r', '\n']);
+            if banner.starts_with("SSH-2.0-") || banner.starts_with("SSH-1.99-") {
+                if banner.len() > 255 {
+                    return Err("SSH 协议标识超过 255 字节".into());
+                }
+                return Ok(banner.to_string());
+            }
+        }
+    }
+}
+
+async fn http_probe(target: &TargetConfig) -> ProbeResult {
+    let start = Instant::now();
+    let mode = target.probe_mode.clone();
+    let scheme = if mode == "https" { "https" } else { "http" };
+    let host = if target.host.contains(':') && !target.host.starts_with('[') {
+        format!("[{}]", target.host)
+    } else {
+        target.host.clone()
+    };
+    let url = format!("{scheme}://{host}:{}{}", target.port, target.http_path);
+    let base = |status: &str, error: Option<String>| ProbeResult {
+        latency_ms: None,
+        tcp_ms: None,
+        // Reqwest performs DNS inside the request; claiming a separate DNS sample
+        // would misrepresent its actual internal timing.
+        dns_ms: None,
+        resolved_address: None,
+        attempted_addresses: Vec::new(),
+        status: status.into(),
+        error,
+        probe_mode: mode.clone(),
+        response_detail: None,
+        route_interface: None,
+    };
+    let url = match reqwest::Url::parse(&url) {
+        Ok(value) => value,
+        Err(err) => return base("invalid_target", Some(format!("HTTP 目标地址无效: {err}"))),
+    };
+    let timeout = Duration::from_millis(target.timeout_ms);
+    // A fresh client forces each sample to make a real request. Avoid environment
+    // HTTP proxies; OS-level TUN/VPN routing may still transparently intercept.
+    let client = match reqwest::Client::builder()
+        .no_proxy()
+        .redirect(reqwest::redirect::Policy::none())
+        .pool_max_idle_per_host(0)
+        .timeout(timeout)
+        .connect_timeout(timeout)
+        .build()
+    {
+        Ok(value) => value,
+        Err(err) => return base("protocol_error", Some(format!("创建 HTTP 客户端失败: {err}"))),
+    };
+    let response = match client.get(url).send().await {
+        Ok(value) => value,
+        Err(err) => {
+            let status = if err.is_timeout() { "timeout" }
+                else if err.is_connect() { "offline" }
+                else { "protocol_error" };
+            return base(status, Some(format!("{} 请求失败: {err}", mode.to_uppercase())));
+        }
+    };
+    // Headers received: this is HTTP response-header latency, NOT full-body time.
+    let elapsed_ms = start.elapsed().as_secs_f64() * 1000.0;
+    let status_code = response.status();
+    let peer = response.remote_addr();
+    let route_interface = match peer {
+        Some(addr) => route_interface_for(addr).await,
+        None => None,
+    };
+    let valid = status_code.is_success();
+    ProbeResult {
+        latency_ms: if valid { Some(elapsed_ms) } else { None },
+        tcp_ms: None,
+        dns_ms: None,
+        resolved_address: peer.map(|addr| addr.to_string()),
+        attempted_addresses: Vec::new(),
+        status: if valid { "ok" } else { "http_error" }.into(),
+        error: if valid { None } else {
+            Some(format!("HTTP {status_code}：已收到服务响应，但不满足 2xx 健康检查标准"))
+        },
+        probe_mode: mode,
+        response_detail: Some(format!("HTTP {status_code} · 响应头耗时 {elapsed_ms:.1} ms")),
+        route_interface,
+    }
+}
+
+async fn route_interface_for(peer: SocketAddr) -> Option<String> {
+    #[cfg(not(target_os = "macos"))]
+    {
+        let _ = peer;
+        None
+    }
+    #[cfg(target_os = "macos")]
+    {
+        let cache = ROUTE_CACHE.get_or_init(|| Mutex::new(HashMap::new()));
+        let ip = peer.ip();
+        if let Ok(entries) = cache.lock() {
+            if let Some((at, interface)) = entries.get(&ip) {
+                if at.elapsed() < ROUTE_CACHE_TTL {
+                    return interface.clone();
+                }
+            }
+        }
+        // Diagnostic only, bounded, does not affect recorded network latency.
+        let output = tokio::time::timeout(
+            Duration::from_millis(350),
+            tokio::process::Command::new("/sbin/route")
+                .args(["-n", "get", &ip.to_string()])
+                .kill_on_drop(true)
+                .output(),
+        ).await;
+        let interface = match output {
+            Ok(Ok(result)) if result.status.success() => {
+                String::from_utf8_lossy(&result.stdout)
+                    .lines()
+                    .find_map(|line| line.trim().strip_prefix("interface:"))
+                    .map(|name| name.trim().to_string())
+            }
+            _ => None,
+        };
+        if let Ok(mut entries) = cache.lock() {
+            if entries.len() >= 64 { entries.clear(); }
+            entries.insert(ip, (Instant::now(), interface.clone()));
+        }
+        interface
     }
 }
 
@@ -228,4 +442,61 @@ mod tests {
         assert_eq!(ipv6.len(), 1);
         assert!(ipv6[0].is_ipv6());
     }
+    #[tokio::test]
+    async fn ssh_probe_rejects_bare_tcp_without_ssh_banner() {
+        use tokio::{io::AsyncWriteExt, net::TcpListener};
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let mut target = TargetConfig::default();
+        target.host = "127.0.0.1".into();
+        target.port = listener.local_addr().unwrap().port();
+        target.probe_mode = "ssh".into();
+        tokio::spawn(async move {
+            let (mut socket, _) = listener.accept().await.unwrap();
+            socket.write_all(b"HTTP/1.1 200 OK\r\n\r\n").await.unwrap();
+        });
+        let result = probe_target(&target).await;
+        assert_eq!(result.status, "protocol_error");
+        assert!(result.latency_ms.is_none());
+        assert!(result.tcp_ms.is_some());
+    }
+
+    #[tokio::test]
+    async fn ssh_probe_accepts_valid_banner() {
+        use tokio::{io::AsyncWriteExt, net::TcpListener};
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let mut target = TargetConfig::default();
+        target.host = "127.0.0.1".into();
+        target.port = listener.local_addr().unwrap().port();
+        target.probe_mode = "ssh".into();
+        tokio::spawn(async move {
+            let (mut socket, _) = listener.accept().await.unwrap();
+            socket.write_all(b"SSH-2.0-test_server\r\n").await.unwrap();
+        });
+        let result = probe_target(&target).await;
+        assert_eq!(result.status, "ok");
+        assert_eq!(result.response_detail.as_deref(), Some("SSH-2.0-test_server"));
+        assert!(result.latency_ms.is_some());
+    }
+
+    #[tokio::test]
+    async fn http_probe_rejects_server_error() {
+        use tokio::{io::{AsyncReadExt, AsyncWriteExt}, net::TcpListener};
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let mut target = TargetConfig::default();
+        target.host = "127.0.0.1".into();
+        target.port = listener.local_addr().unwrap().port();
+        target.probe_mode = "http".into();
+        target.http_path = "/health".into();
+        tokio::spawn(async move {
+            let (mut socket, _) = listener.accept().await.unwrap();
+            let mut request = [0u8; 1024];
+            let _ = socket.read(&mut request).await;
+            socket.write_all(b"HTTP/1.1 503 Service Unavailable\r\nContent-Length: 0\r\nConnection: close\r\n\r\n").await.unwrap();
+        });
+        let result = probe_target(&target).await;
+        assert_eq!(result.status, "http_error");
+        assert!(result.latency_ms.is_none());
+        assert!(result.response_detail.unwrap().contains("503"));
+    }
+
 }
