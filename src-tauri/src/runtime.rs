@@ -1,7 +1,7 @@
 use crate::{
     battery::BatteryStatus,
     config::{endpoint_key, AppConfig, TargetConfig},
-    probe::{tcp_probe, ProbeResult},
+    probe::{probe_target, ProbeResult},
 };
 use serde::Serialize;
 use std::{
@@ -45,6 +45,9 @@ pub(crate) struct ProbeSnapshot {
     pub(crate) sample_age_ms: u128,
     pub(crate) dns_ms: Option<f64>,
     pub(crate) resolved_address: Option<String>,
+    pub(crate) probe_mode: String,
+    pub(crate) response_detail: Option<String>,
+    pub(crate) route_interface: Option<String>,
 }
 
 impl ProbeSnapshot {
@@ -72,6 +75,9 @@ impl ProbeSnapshot {
             sample_age_ms: 0,
             dns_ms: None,
             resolved_address: None,
+            probe_mode: target.probe_mode.clone(),
+            response_detail: None,
+            route_interface: None,
         }
     }
 
@@ -175,6 +181,7 @@ impl SharedState {
                 runtime.snapshot.target_name = target.name.clone();
                 runtime.snapshot.host = target.host.clone();
                 runtime.snapshot.port = target.port;
+                runtime.snapshot.probe_mode = target.probe_mode.clone();
                 runtime.snapshot.enabled = target.enabled;
                 runtime.endpoint_key = key;
                 if target.enabled && !was_enabled {
@@ -380,12 +387,16 @@ fn tray_title(snapshot: &ProbeSnapshot) -> String {
         return "Disabled".into();
     }
     if let Some(ms) = snapshot.current_ms {
-        return format!("{} ms", ms.round() as u64);
+        let mode = snapshot.probe_mode.to_ascii_uppercase();
+        return format!("{mode} {}ms", ms.round() as u64);
     }
     match snapshot.status.as_str() {
         "timeout" => "Timeout".into(),
         "refused" => "Refused".into(),
         "offline" => "Offline".into(),
+        "http_error" => "HTTP Error".into(),
+        "protocol_error" => "Protocol".into(),
+        "invalid_target" => "Invalid".into(),
         "dns_timeout" => "DNS Timeout".into(),
         "dns_error" => "DNS Error".into(),
         "stale" => "Stale".into(),
@@ -400,12 +411,18 @@ pub(crate) fn emit_active_snapshot(app: &AppHandle, state: &SharedState) {
     if let Some(tray) = app.tray_by_id(TRAY_ID) {
         let _ = tray.set_title(Some(tray_title(&snapshot)));
         let endpoint = snapshot.resolved_address.as_deref().unwrap_or("unresolved");
+        let route = snapshot.route_interface.as_deref().unwrap_or("未知");
+        let warning = if route.starts_with("utun") { " · TUN/VPN 路径，可能经过代理" } else { "" };
+        let detail = snapshot.response_detail.as_deref().unwrap_or("仅 TCP 握手");
         let tooltip = format!(
-            "{} · {}:{} · {} · 当前 {} · TCP {} · P95 {} · 失败 {:.1}%",
+            "{} · {}:{} · {} · {} · 路由 {}{} · 当前 {} · TCP {} · P95 {} · 失败 {:.1}%",
             snapshot.target_name,
             snapshot.host,
             snapshot.port,
             endpoint,
+            detail,
+            route,
+            warning,
             snapshot
                 .current_ms
                 .map(|v| format!("{v:.0}ms"))
@@ -513,6 +530,9 @@ fn complete_probe(
         sample_age_ms: 0,
         dns_ms: result.dns_ms,
         resolved_address: result.resolved_address.clone(),
+        probe_mode: result.probe_mode,
+        response_detail: result.response_detail,
+        route_interface: result.route_interface,
     };
 
     let previous_incident = runtime.incident.clone();
@@ -540,7 +560,7 @@ fn complete_probe(
     let recovery = if config.notifications_enabled && config.notify_recovery {
         match recovered_kind {
             Some("failure") => Some(AlertRequest {
-                title: format!("{} 已恢复", target.name),
+                title: format!("{} {} 验证恢复", target.name, target.probe_mode.to_ascii_uppercase()),
                 body: format!(
                     "{}:{} 已恢复可达，当前 {:.0} ms",
                     target.host,
@@ -574,10 +594,11 @@ fn complete_probe(
         runtime.last_notification_ms = now;
         runtime.incident = Some("failure".into());
         Some(AlertRequest {
-            title: format!("{} 不可达", target.name),
+            title: format!("{} {} 探测失败", target.name, target.probe_mode.to_ascii_uppercase()),
             body: format!(
-                "{}:{} 已连续 {} 次 TCP 探测失败（{}）",
-                target.host, target.port, runtime.consecutive_failure, status
+                "{}:{} 已连续 {} 次 {} 探测失败（{}）",
+                target.host, target.port, runtime.consecutive_failure,
+                target.probe_mode.to_ascii_uppercase(), status
             ),
         })
     } else if can_notify && runtime.consecutive_high >= config.notify_consecutive_high {
@@ -697,7 +718,7 @@ pub(crate) async fn probe_scheduler(app: AppHandle, state: Arc<SharedState>) {
             let loop_state = state.clone();
             let target = target.clone();
             tauri::async_runtime::spawn(async move {
-                let result = tcp_probe(&target).await;
+                let result = probe_target(&target).await;
                 if loop_state.generation.load(Ordering::Relaxed) != generation {
                     clear_inflight(&loop_state, &target.id, generation);
                     return;

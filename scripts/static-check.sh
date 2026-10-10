@@ -22,13 +22,13 @@ if command -v python3 >/dev/null 2>&1; then
 import tomllib
 with open("src-tauri/Cargo.toml", "rb") as f:
     cargo = tomllib.load(f)
-assert cargo["package"]["version"] == "0.13.0"
+assert cargo["package"]["version"] == "0.14.0"
 PYTOML
 else
   echo "WARN: python3 不存在，跳过 JSON/TOML 语法检查"
 fi
 
-grep -q '"version": "0.13.0"' src-tauri/tauri.conf.json
+grep -q '"version": "0.14.0"' src-tauri/tauri.conf.json
 grep -q '"shadow": false' src-tauri/tauri.conf.json
 
 # Backend module boundaries: main.rs should only assemble the application.
@@ -61,6 +61,15 @@ grep -q 'DNS_CACHE_TTL' src-tauri/src/probe.rs
 grep -q 'DNS_CACHE_MAX_ENTRIES' src-tauri/src/probe.rs
 grep -q 'invalidate_cached_addresses' src-tauri/src/probe.rs
 grep -q 'tcp_probe' src-tauri/src/probe.rs
+grep -q 'probe_target' src-tauri/src/probe.rs
+grep -q 'verify_ssh_banner' src-tauri/src/probe.rs
+grep -q 'http_probe' src-tauri/src/probe.rs
+grep -q 'route_interface_for' src-tauri/src/probe.rs
+grep -q 'probe_mode' src-tauri/src/config.rs
+grep -q 'http_path' src-tauri/src/config.rs
+grep -q 'probeMode' frontend/settings.js
+grep -q 'httpPath' frontend/settings.js
+grep -q 'metricLegend' frontend/settings.html
 
 grep -q 'scheduler_notify: Notify' src-tauri/src/runtime.rs
 grep -q 'next_probe_delay' src-tauri/src/runtime.rs

@@ -5,7 +5,7 @@ use crate::{
         apply_floating_window_effect, apply_floating_window_size, set_floating_visibility,
         set_mouse_passthrough_native, show_settings_window,
     },
-    probe::{tcp_probe, ProbeResult},
+    probe::{probe_target, ProbeResult},
     runtime::{
         all_snapshots, emit_active_snapshot, history_for_target, snapshot_for_active, HistoryPoint,
         ProbeSnapshot, SharedState,
@@ -146,6 +146,8 @@ pub(crate) async fn test_target(mut target: TargetConfig) -> Result<ProbeResult,
     target.name = target.name.trim().to_string();
     target.host = target.host.trim().to_string();
     target.address_family = target.address_family.trim().to_ascii_lowercase();
+    target.probe_mode = target.probe_mode.trim().to_ascii_lowercase();
+    target.http_path = target.http_path.trim().to_string();
     if target.host.is_empty() {
         return Err("Host / IP 不能为空".into());
     }
@@ -158,7 +160,18 @@ pub(crate) async fn test_target(mut target: TargetConfig) -> Result<ProbeResult,
     if !matches!(target.address_family.as_str(), "auto" | "ipv4" | "ipv6") {
         return Err("地址族必须是 auto / ipv4 / ipv6".into());
     }
-    Ok(tcp_probe(&target).await)
+    if !matches!(target.probe_mode.as_str(), "tcp" | "ssh" | "http" | "https") {
+        return Err("探测协议必须是 tcp / ssh / http / https".into());
+    }
+    if !target.http_path.starts_with('/') || target.http_path.len() > 512 ||
+        target.http_path.chars().any(char::is_control) {
+        return Err("HTTP 路径必须以 / 开头且不能包含控制字符".into());
+    }
+    if target.host.chars().any(|c| c.is_control() || c.is_whitespace()) ||
+       target.host.contains('/') || target.host.contains('@') {
+        return Err("Host 必须是主机名或 IP，不能填写完整 URL".into());
+    }
+    Ok(probe_target(&target).await)
 }
 
 #[tauri::command]

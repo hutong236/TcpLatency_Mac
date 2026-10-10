@@ -270,3 +270,6 @@ button:disabled { opacity: .52; cursor: not-allowed; }
 @media (prefers-reduced-transparency: reduce) {
   .card, .section-nav, .footer-actions { backdrop-filter: none; -webkit-backdrop-filter: none; }
 }
+
+/* Conditional protocol fields must stay hidden inside responsive grids. */
+[hidden] { display: none !important; }

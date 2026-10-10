@@ -132,14 +132,18 @@ function render(snapshot) {
   latestSnapshot = snapshot;
 
   const targetLabel = snapshot.targetName || snapshot.host || `${snapshot.host}:${snapshot.port}`;
+  const modeLabel = (snapshot.probeMode || 'tcp').toUpperCase();
   const targetTitle = `${snapshot.host || '--'}:${snapshot.port || '--'}`;
-  const ariaLabel = `${targetLabel} 网络延迟状态`;
+  const ariaLabel = `${targetLabel} · ${modeLabel} 网络探测状态`;
   const statusTitle = snapshot.status || 'unknown';
 
-  if (targetEl.textContent !== targetLabel) targetEl.textContent = targetLabel;
+  const displayTarget = `${targetLabel} · ${modeLabel}`;
+  if (targetEl.textContent !== displayTarget) targetEl.textContent = displayTarget;
   if (targetEl.title !== targetTitle) targetEl.title = targetTitle;
   if (floatingEl.getAttribute('aria-label') !== ariaLabel) floatingEl.setAttribute('aria-label', ariaLabel);
-  if (statusDotEl.getAttribute('title') !== statusTitle) statusDotEl.setAttribute('title', statusTitle);
+  const route = snapshot.routeInterface || '未知';
+  const tooltip = `${modeLabel} · ${statusTitle} · 路由 ${route}${route.startsWith('utun') ? ' · TUN/VPN，可能经过代理' : ''}`;
+  if (statusDotEl.getAttribute('title') !== tooltip) statusDotEl.setAttribute('title', tooltip);
 
   if (snapshot.batteryPaused) {
     setVisualState('paused', 'status-text');
@@ -184,6 +188,18 @@ function render(snapshot) {
     case 'offline':
       setVisualState('offline', 'status-text');
       setValue('Offline');
+      break;
+    case 'protocol_error':
+      setVisualState('offline', 'status-text');
+      setValue('Protocol');
+      break;
+    case 'http_error':
+      setVisualState('offline', 'status-text');
+      setValue('HTTP Error');
+      break;
+    case 'invalid_target':
+      setVisualState('offline', 'status-text');
+      setValue('Invalid');
       break;
     case 'dns_timeout':
       setVisualState('dns-error', 'status-text');
