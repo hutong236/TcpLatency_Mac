@@ -307,7 +307,6 @@ async fn verify_ssh_banner(stream: &mut TcpStream) -> Result<String, String> {
 }
 
 async fn http_probe(target: &TargetConfig) -> ProbeResult {
-    let start = Instant::now();
     let mode = target.probe_mode.clone();
     let scheme = if mode == "https" { "https" } else { "http" };
     let host = if target.host.contains(':') && !target.host.starts_with('[') {
@@ -348,6 +347,8 @@ async fn http_probe(target: &TargetConfig) -> ProbeResult {
         Ok(value) => value,
         Err(err) => return base("protocol_error", Some(format!("创建 HTTP 客户端失败: {err}"))),
     };
+    // Measure the actual request, not local TLS client construction overhead.
+    let start = Instant::now();
     let response = match client.get(url).send().await {
         Ok(value) => value,
         Err(err) => {
