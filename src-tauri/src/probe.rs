@@ -334,15 +334,48 @@ async fn http_probe(target: &TargetConfig) -> ProbeResult {
         Err(err) => return base("invalid_target", Some(format!("HTTP 目标地址无效: {err}"))),
     };
     let timeout = Duration::from_millis(target.timeout_ms);
+    // Forcing an address family must work in HTTP(S) too. Reqwest's default
+    // resolver otherwise ignores the per-target ipv4/ipv6 preference.
+    let mut explicit_addresses: Option<Vec<SocketAddr>> = None;
+    let mut dns_cost_ms = None;
+    if target.address_family != "auto" {
+        let key = endpoint_key(target);
+        let addresses = if let Some(cached) = cached_addresses(&key, Instant::now()) {
+            cached
+        } else {
+            let dns_started = Instant::now();
+            let lookup = tokio::time::timeout(timeout, lookup_host((target.host.as_str(), target.port))).await;
+            let resolved: Vec<SocketAddr> = match lookup {
+                Err(_) => return base("dns_timeout", Some("DNS 解析超时".into())),
+                Ok(Err(err)) => return base("dns_error", Some(format!("DNS 解析失败: {err}"))),
+                Ok(Ok(iter)) => iter.collect(),
+            };
+            dns_cost_ms = Some(dns_started.elapsed().as_secs_f64() * 1000.0);
+            let filtered = normalize_addresses(resolved, &target.address_family);
+            cache_addresses(key, &filtered, Instant::now());
+            filtered
+        };
+        if addresses.is_empty() {
+            return base("dns_error", Some(format!("DNS 未返回 {} 地址", target.address_family)));
+        }
+        explicit_addresses = Some(addresses);
+    }
+    let remaining = timeout.saturating_sub(Duration::from_secs_f64(dns_cost_ms.unwrap_or(0.0) / 1000.0));
+    if remaining.is_zero() {
+        return base("timeout", Some("DNS 已耗尽探测超时预算".into()));
+    }
     // A fresh client forces each sample to make a real request. Avoid environment
     // HTTP proxies; OS-level TUN/VPN routing may still transparently intercept.
-    let client = match reqwest::Client::builder()
+    let mut builder = reqwest::Client::builder()
         .no_proxy()
         .redirect(reqwest::redirect::Policy::none())
         .pool_max_idle_per_host(0)
-        .timeout(timeout)
-        .connect_timeout(timeout)
-        .build()
+        .timeout(remaining)
+        .connect_timeout(remaining);
+    if let Some(addresses) = &explicit_addresses {
+        builder = builder.resolve_to_addrs(&target.host, addresses);
+    }
+    let client = match builder.build()
     {
         Ok(value) => value,
         Err(err) => return base("protocol_error", Some(format!("创建 HTTP 客户端失败: {err}"))),
@@ -355,11 +388,14 @@ async fn http_probe(target: &TargetConfig) -> ProbeResult {
             let status = if err.is_timeout() { "timeout" }
                 else if err.is_connect() { "offline" }
                 else { "protocol_error" };
+            if err.is_connect() && explicit_addresses.is_some() {
+                invalidate_cached_addresses(&endpoint_key(target));
+            }
             return base(status, Some(format!("{} 请求失败: {err}", mode.to_uppercase())));
         }
     };
     // Headers received: this is HTTP response-header latency, NOT full-body time.
-    let elapsed_ms = start.elapsed().as_secs_f64() * 1000.0;
+    let elapsed_ms = start.elapsed().as_secs_f64() * 1000.0 + dns_cost_ms.unwrap_or(0.0);
     let status_code = response.status();
     let peer = response.remote_addr();
     let route_interface = match peer {
@@ -370,7 +406,7 @@ async fn http_probe(target: &TargetConfig) -> ProbeResult {
     ProbeResult {
         latency_ms: if valid { Some(elapsed_ms) } else { None },
         tcp_ms: None,
-        dns_ms: None,
+        dns_ms: dns_cost_ms,
         resolved_address: peer.map(|addr| addr.to_string()),
         attempted_addresses: Vec::new(),
         status: if valid { "ok" } else { "http_error" }.into(),
@@ -477,6 +513,39 @@ mod tests {
         assert_eq!(result.status, "ok");
         assert_eq!(result.response_detail.as_deref(), Some("SSH-2.0-test_server"));
         assert!(result.latency_ms.is_some());
+    }
+
+
+    #[tokio::test]
+    async fn http_ipv6_only_rejects_ipv4_address() {
+        let mut target = TargetConfig::default();
+        target.host = "127.0.0.1".into();
+        target.port = 43995;
+        target.address_family = "ipv6".into();
+        target.probe_mode = "http".into();
+        let result = probe_target(&target).await;
+        assert_eq!(result.status, "dns_error");
+        assert!(result.latency_ms.is_none());
+    }
+
+    #[tokio::test]
+    async fn http_probe_accepts_204_health_response() {
+        use tokio::{io::{AsyncReadExt, AsyncWriteExt}, net::TcpListener};
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let mut target = TargetConfig::default();
+        target.host = "127.0.0.1".into();
+        target.port = listener.local_addr().unwrap().port();
+        target.probe_mode = "http".into();
+        tokio::spawn(async move {
+            let (mut socket, _) = listener.accept().await.unwrap();
+            let mut request = [0u8; 1024];
+            let _ = socket.read(&mut request).await;
+            socket.write_all(b"HTTP/1.1 204 No Content\r\nContent-Length: 0\r\nConnection: close\r\n\r\n").await.unwrap();
+        });
+        let result = probe_target(&target).await;
+        assert_eq!(result.status, "ok");
+        assert!(result.latency_ms.is_some());
+        assert!(result.response_detail.unwrap().contains("204"));
     }
 
     #[tokio::test]
