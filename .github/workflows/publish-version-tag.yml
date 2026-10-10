@@ -74,7 +74,7 @@ jobs:
           set -euo pipefail
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git tag -a "${RELEASE_TAG}" -m "TCP Latency ${RELEASE_TAG} — Observatory UX"
+          git tag -a "${RELEASE_TAG}" -m "TCP Latency ${RELEASE_TAG} — verified network probes"
           git push origin "refs/tags/${RELEASE_TAG}"
 
       - name: Dispatch universal macOS release build
