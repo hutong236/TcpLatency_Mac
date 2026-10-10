@@ -21,7 +21,7 @@ function setDirty(isDirty) {
 }
 
 function validateTargetForm() {
-  for (const id of ['name', 'host', 'port', 'intervalMs', 'timeoutMs']) {
+  for (const id of ['name', 'host', 'port', 'intervalMs', 'timeoutMs', 'httpPath']) {
     const field = $(id);
     if (!field.value.trim() || !field.checkValidity()) {
       showMessage('请检查目标名称、地址及端口 / 时间范围', true);
@@ -36,10 +36,15 @@ function fmt(value, suffix = ' ms') {
   return value == null ? '--' : `${Math.round(value * 10) / 10}${suffix}`;
 }
 
-function statusText(status, paused = false) {
+function statusText(status, paused = false, mode = 'tcp') {
   if (paused || status === 'paused') return 'Paused';
   if (status === 'battery') return 'Battery';
-  if (status === 'ok') return 'OK';
+  if (status === 'ok') return mode === 'tcp' ? 'TCP Connected'
+    : mode === 'ssh' ? 'SSH Verified'
+      : mode === 'https' ? 'HTTPS Verified' : 'HTTP Verified';
+  if (status === 'http_error') return 'HTTP Error';
+  if (status === 'protocol_error') return 'Protocol Error';
+  if (status === 'invalid_target') return 'Invalid Target';
   if (status === 'timeout') return 'Timeout';
   if (status === 'refused') return 'Refused';
   if (status === 'offline') return 'Offline';
@@ -83,6 +88,12 @@ function refreshTargetSelect() {
   loadActiveTargetForm();
 }
 
+function updateProtocolFields() {
+  const mode = $('probeMode').value;
+  $('httpPathRow').hidden = mode !== 'http' && mode !== 'https';
+  $('httpPath').disabled = false; // Persist path even when temporarily selecting TCP/SSH.
+}
+
 function loadActiveTargetForm() {
   const t = activeTarget();
   if (!t) return;
@@ -93,6 +104,9 @@ function loadActiveTargetForm() {
   $('timeoutMs').value = t.timeoutMs;
   $('targetEnabled').checked = t.enabled !== false;
   $('addressFamily').value = t.addressFamily || 'auto';
+  $('probeMode').value = t.probeMode || 'tcp';
+  $('httpPath').value = t.httpPath || '/';
+  updateProtocolFields();
 }
 
 function updateActiveTargetFromForm() {
@@ -105,6 +119,8 @@ function updateActiveTargetFromForm() {
   t.timeoutMs = Number($('timeoutMs').value);
   t.enabled = $('targetEnabled').checked;
   t.addressFamily = $('addressFamily').value;
+  t.probeMode = $('probeMode').value;
+  t.httpPath = $('httpPath').value.trim();
 }
 
 function formatAge(ms) {
@@ -143,20 +159,19 @@ async function testCurrentTarget() {
   button.disabled = true;
   button.setAttribute('aria-busy', 'true');
   resultEl.className = 'test-result';
-  resultEl.textContent = '正在解析 DNS 并建立 TCP 连接…';
+  resultEl.textContent = '正在执行协议验证，请求可能经过 VPN / TUN…';
   try {
     const result = await invoke('test_target', { target });
-    const dns = result.dnsMs == null ? '--' : `${result.dnsMs.toFixed(1)}ms`;
+    const dns = result.dnsMs == null ? '' : ` · DNS ${result.dnsMs.toFixed(1)}ms`;
     const total = result.latencyMs == null ? '--' : `${result.latencyMs.toFixed(1)}ms`;
-    const tcp = result.tcpMs == null ? '--' : `${result.tcpMs.toFixed(1)}ms`;
+    const tcp = result.tcpMs == null ? '' : ` · TCP ${result.tcpMs.toFixed(1)}ms`;
     const addr = result.resolvedAddress || result.attemptedAddresses?.join(', ') || '--';
-    if (result.status === 'ok') {
-      resultEl.className = 'test-result success';
-      resultEl.textContent = `OK · 实际延时 ${total} · TCP RTT ${tcp} · DNS ${dns} · ${addr}`;
-    } else {
-      resultEl.className = 'test-result error';
-      resultEl.textContent = `${statusText(result.status)} · DNS ${dns} · ${addr} · ${result.error || '连接失败'}`;
-    }
+    const interfaceName = result.routeInterface || '未知';
+    const routeNote = interfaceName.startsWith('utun') ? ' · TUN/VPN 路径，结果可能受代理接管影响' : '';
+    const detail = result.responseDetail || (result.probeMode === 'tcp' ? '仅验证 TCP 建连' : '');
+    const prefix = statusText(result.status, false, result.probeMode);
+    resultEl.className = result.status === 'ok' ? 'test-result success' : 'test-result error';
+    resultEl.textContent = `${prefix} · ${result.status === 'ok' ? total : '未通过验证'}${tcp}${dns} · ${addr} · 路由 ${interfaceName}${routeNote}${detail ? ` · ${detail}` : ''}${result.error ? ` · ${result.error}` : ''}`;
   } catch (err) {
     resultEl.className = 'test-result error';
     resultEl.textContent = String(err);
@@ -226,9 +241,17 @@ function renderSnapshot(s) {
   $('failure').textContent = `${Math.round((s.failurePercent || 0) * 10) / 10}%`;
   $('dns').textContent = fmt(s.dnsMs);
   $('chartTitle').textContent = `${s.targetName || '当前目标'} · 最近 60 秒`;
+  const mode = (s.probeMode || 'tcp').toUpperCase();
+  $('metricLegend').textContent = (mode === 'HTTP' || mode === 'HTTPS')
+    ? `${mode} 响应头耗时（含 DNS、TCP 和必要的 TLS）`
+    : mode === 'SSH'
+      ? 'SSH 协议标识到达耗时（含 DNS、TCP）'
+      : 'TCP 建连总耗时（含 DNS 与回退）';
   const resolved = s.resolvedAddress ? ` → ${s.resolvedAddress}` : '';
   const age = s.sampleAgeMs != null ? ` · ${formatAge(s.sampleAgeMs)}前` : '';
-  $('chartSub').textContent = `${s.host || '--'}:${s.port || '--'}${resolved} · ${statusText(s.status, s.paused)}${age}`;
+  const route = s.routeInterface ? ` · 接口 ${s.routeInterface}${s.routeInterface.startsWith('utun') ? '（TUN/VPN，结果可能经代理）' : ''}` : '';
+  const protocol = s.responseDetail ? ` · ${s.responseDetail}` : '';
+  $('chartSub').textContent = `${s.host || '--'}:${s.port || '--'}${resolved} · ${statusText(s.status, s.paused, s.probeMode)}${route}${protocol}${age}`;
 }
 
 function renderTargetRows() {
@@ -247,12 +270,12 @@ function renderTargetRows() {
       batteryPaused: false,
     };
     const cls = statusClass(s);
-    const current = s.currentMs == null ? statusText(s.status, s.paused) : fmt(s.currentMs);
-    const status = statusText(s.status, s.paused);
+    const current = s.currentMs == null ? statusText(s.status, s.paused, s.probeMode) : fmt(s.currentMs);
+    const status = statusText(s.status, s.paused, s.probeMode);
     const active = target.id === config.activeTargetId ? ' active' : '';
     return `<tr data-target-id="${escapeHtml(target.id)}" class="${active.trim()}">
       <td><span class="target-name"><button type="button" class="target-select" data-select-target="${escapeHtml(target.id)}" aria-label="设为主目标：${escapeHtml(target.name)}" aria-pressed="${target.id === config.activeTargetId}"><i class="target-dot ${cls}" aria-hidden="true"></i>${escapeHtml(target.name)}</button></span></td>
-      <td>${escapeHtml(target.host)}:${target.port}</td>
+      <td>${escapeHtml(target.host)}:${target.port} <small>· ${escapeHtml((target.probeMode || 'tcp').toUpperCase())}</small></td>
       <td>${escapeHtml(current)}</td>
       <td>${escapeHtml(fmt(s.averageMs))}</td>
       <td>${Math.round((s.failurePercent || 0) * 10) / 10}%</td>
@@ -492,9 +515,11 @@ async function boot() {
     if (row) selectTarget(row.dataset.targetId);
   });
 
-  for (const id of ['name', 'host', 'port', 'intervalMs', 'timeoutMs', 'addressFamily', 'targetEnabled']) {
+  for (const id of ['name', 'host', 'port', 'intervalMs', 'timeoutMs', 'addressFamily', 'probeMode', 'httpPath', 'targetEnabled']) {
     $(id).addEventListener('change', updateActiveTargetFromForm);
   }
+
+  $('probeMode').addEventListener('change', updateProtocolFields);
 
   $('addTarget').addEventListener('click', () => {
     updateActiveTargetFromForm();
@@ -508,6 +533,8 @@ async function boot() {
       timeoutMs: 2000,
       enabled: true,
       addressFamily: 'auto',
+      probeMode: 'tcp',
+      httpPath: '/',
     });
     config.activeTargetId = id;
     refreshTargetSelect();
