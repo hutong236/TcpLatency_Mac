@@ -596,8 +596,9 @@ fn complete_probe(
         Some(AlertRequest {
             title: format!("{} 不可达", target.name),
             body: format!(
-                "{}:{} 已连续 {} 次 TCP 探测失败（{}）",
-                target.host, target.port, runtime.consecutive_failure, status
+                "{}:{} 已连续 {} 次 {} 探测失败（{}）",
+                target.host, target.port, runtime.consecutive_failure,
+                target.probe_mode.to_ascii_uppercase(), status
             ),
         })
     } else if can_notify && runtime.consecutive_high >= config.notify_consecutive_high {
