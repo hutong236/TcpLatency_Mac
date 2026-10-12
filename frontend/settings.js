@@ -205,6 +205,40 @@ async function copyProbeReport() {
   }
 }
 
+async function refreshHourly() {
+  const body = $('hourlyRows');
+  try {
+    const items = await invoke('get_hourly_history', {targetId: config.activeTargetId, limit: 168});
+    body.innerHTML = items.length ? items.map(x => '<tr><td>' +
+      escapeHtml(new Date(x.hourMs).toLocaleString()) + '</td><td>' +
+      x.sampleCount + '</td><td>' +
+      (x.sampleCount ? (100*x.successCount/x.sampleCount).toFixed(1) : '0.0') + '%</td><td>' +
+      fmt(x.averageMs) + '</td><td>' + fmt(x.minMs) + '</td><td>' +
+      fmt(x.maxMs) + '</td></tr>').join('') :
+      '<tr><td colspan="6">暂无已归档的探测记录</td></tr>';
+  } catch(err) { body.textContent = '统计读取失败：' + String(err); }
+}
+
+async function exportHourly() {
+  try {
+    const items = await invoke('get_hourly_history', {targetId: config.activeTargetId, limit: 720});
+    const rows = [['hour_iso','sample_count','success_count','success_percent','average_ms','min_ms','max_ms'],
+      ...items.map(x => [new Date(x.hourMs).toISOString(),x.sampleCount,x.successCount,
+        x.sampleCount ? (100*x.successCount/x.sampleCount).toFixed(2) : '0.00',
+        x.averageMs ?? '',x.minMs ?? '',x.maxMs ?? ''])];
+    const csv = '\uFEFF' + rows.map(row => row.map(csvField).join(',')).join('\r\n');
+    const url = URL.createObjectURL(new Blob([csv], {type:'text/csv;charset=utf-8'}));
+    const anchor = document.createElement('a');
+    anchor.href = url;
+    anchor.download = 'tcp-latency-hourly-' + new Date().toISOString().replace(/[:.]/g,'-') + '.csv';
+    document.body.appendChild(anchor);
+    anchor.click();
+    anchor.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+    showMessage('已导出 ' + items.length + ' 个小时聚合记录');
+  } catch(err) { showMessage('导出失败：' + String(err), true); }
+}
+
 async function exportIncidentEvents() {
   try {
     const events = await invoke('get_incident_events', { limit: 500 });
@@ -670,8 +704,12 @@ function setupSectionNavigation() {
 async function boot() {
   setupSectionNavigation();
   $('refreshEvents')?.addEventListener('click', refreshIncidentEvents);
+  $('refreshHourly')?.addEventListener('click', refreshHourly);
+  $('exportHourly')?.addEventListener('click', exportHourly);
   $('exportEvents')?.addEventListener('click', exportIncidentEvents);
   refreshIncidentEvents();
+  // Initial view loads without blocking configuration rendering.
+  setTimeout(() => { if (config?.activeTargetId) refreshHourly(); }, 250);
   config = await invoke('get_config');
   renderConfig();
   $('paused').checked = await invoke('is_paused');
