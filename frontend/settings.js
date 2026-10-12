@@ -205,6 +205,20 @@ async function copyProbeReport() {
   }
 }
 
+async function refreshIncidentEvents() {
+  const body = $('incidentRows');
+  if (!body) return;
+  try {
+    const events = await invoke('get_incident_events', { limit: 100 });
+    body.innerHTML = events.length ? events.map(e =>
+      '<tr><td>' + escapeHtml(new Date(e.timestampMs).toLocaleString()) +
+      '</td><td>' + escapeHtml(e.targetName) +
+      '</td><td>' + escapeHtml(e.status) +
+      '</td><td>' + escapeHtml(e.detail) + '</td></tr>'
+    ).join('') : '<tr><td colspan="4">暂无异常事件</td></tr>';
+  } catch (err) { body.textContent = '事件读取失败：' + String(err); }
+}
+
 async function testIcmpComparison() {
   updateActiveTargetFromForm();
   const target = { ...activeTarget() };
@@ -581,6 +595,8 @@ function setupSectionNavigation() {
 
 async function boot() {
   setupSectionNavigation();
+  $('refreshEvents')?.addEventListener('click', refreshIncidentEvents);
+  refreshIncidentEvents();
   config = await invoke('get_config');
   renderConfig();
   $('paused').checked = await invoke('is_paused');
