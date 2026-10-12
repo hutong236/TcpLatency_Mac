@@ -62,6 +62,10 @@
       </div>
     </section>
 
+    <section id="events" class="card" aria-labelledby="eventsTitle">
+      <div class="section-title-row"><div><h2 id="eventsTitle">异常事件时间线</h2><p>状态变化记录保存在本机 SQLite，默认保留 30 天。</p></div><button id="refreshEvents" type="button" class="secondary">刷新事件</button></div>
+      <div class="target-table-wrap"><table class="target-table"><thead><tr><th>时间</th><th>目标</th><th>状态</th><th>说明</th></tr></thead><tbody id="incidentRows"><tr><td colspan="4">等待加载</td></tr></tbody></table></div>
+    </section>
     <section id="targets" class="card" aria-labelledby="targetsTitle">
       <div class="section-title-row">
         <div>
