@@ -180,7 +180,7 @@ function probeReport(target, result) {
     '判定范围: ' + scope,
     '注意: TCP 建连耗时不等于 ICMP Ping RTT；DNS 缓存可能使 DNS 耗时为 0。',
     ...(route.startsWith('utun') ? ['路径提示: 发现 TUN/VPN 接口，不能据此认定代理伪造了连接结果。'] : []),
-  ].join('\\n');
+  ].join('\n');
 }
 
 async function copyProbeReport() {
