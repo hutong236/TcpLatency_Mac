@@ -1,4 +1,5 @@
 use crate::{
+    event_store::{recent_events, IncidentEvent},
     battery::BatteryStatus,
     config::{persist_config, validate_config, AppConfig, TargetConfig},
     macos_window::{
@@ -98,6 +99,11 @@ pub(crate) fn get_history(
     target_id: String,
 ) -> Vec<HistoryPoint> {
     history_for_target(state.inner().as_ref(), &target_id)
+}
+
+#[tauri::command]
+pub(crate) async fn get_incident_events(limit: u32) -> Result<Vec<IncidentEvent>, String> {
+    tokio::task::spawn_blocking(move || recent_events(limit)).await.map_err(|e| e.to_string())?
 }
 
 #[tauri::command]
