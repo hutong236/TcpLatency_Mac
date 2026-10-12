@@ -287,7 +287,9 @@ async function testIcmpComparison() {
     const line = 'ICMP ' + result.status + ' · ' + latency + ' · ' + result.detail +
       '。注意：ICMP 与 TCP 属于不同检测，不应直接比较或混入同一个延时平均值。';
     box.textContent = line;
-    lastProbeReport = (lastProbeReport || '') + '\n' + line;
+    // Keep the report bounded during five-second watch mode.
+    const previous = (lastProbeReport || '').split('\n').slice(-45).join('\n');
+    lastProbeReport = previous ? previous + '\n' + line : line;
     $('copyProbeReport').disabled = false;
   } catch (error) { box.textContent = String(error); }
   finally { button.disabled = false; icmpWatchBusy = false; }
