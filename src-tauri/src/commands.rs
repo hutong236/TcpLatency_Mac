@@ -237,6 +237,65 @@ pub(crate) async fn test_icmp(target: TargetConfig) -> Result<IcmpDiagnostic, St
     }
 }
 
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct RouteDiagnostic {
+    destination: String,
+    interface: Option<String>,
+    gateway: Option<String>,
+    flags: Option<String>,
+    note: String,
+}
+
+#[tauri::command]
+pub(crate) async fn diagnose_route(target: TargetConfig) -> Result<RouteDiagnostic, String> {
+    let host = target.host.trim();
+    if host.is_empty() || host.len() > 253 || host.starts_with('-')
+        || host.chars().any(|c| !(c.is_ascii_alphanumeric() || matches!(c, '.' | ':' | '-' | '_'))) {
+        return Err("目标主机名或 IP 格式无效".into());
+    }
+    #[cfg(target_os = "macos")]
+    {
+        let lookup = tokio::time::timeout(
+            std::time::Duration::from_secs(3),
+            tokio::net::lookup_host((host, target.port.max(1))),
+        ).await.map_err(|_| "DNS 解析超时".to_string())?
+            .map_err(|e| format!("DNS 解析失败: {e}"))?;
+        let ip = lookup.into_iter().find(|a| match target.address_family.as_str() {
+            "ipv4" => a.is_ipv4(),
+            "ipv6" => a.is_ipv6(),
+            _ => true,
+        }).ok_or_else(|| "没有与地址族匹配的解析地址".to_string())?.ip();
+        let output = tokio::time::timeout(
+            std::time::Duration::from_secs(2),
+            tokio::process::Command::new("/sbin/route")
+                .args(["-n", "get", &ip.to_string()])
+                .kill_on_drop(true).output(),
+        ).await.map_err(|_| "系统路由查询超时".to_string())?
+            .map_err(|e| format!("系统路由查询失败: {e}"))?;
+        if !output.status.success() {
+            return Err(format!("系统路由查询失败: {}", String::from_utf8_lossy(&output.stderr)));
+        }
+        let output_text = String::from_utf8_lossy(&output.stdout);
+        let field = |key: &str| output_text.lines()
+            .find_map(|line| line.trim().strip_prefix(key))
+            .map(|v| v.trim().to_string());
+        let interface = field("interface:");
+        let note = if interface.as_deref().is_some_and(|i| i.starts_with("utun")) {
+            "目标路由经过 utun；可能受 VPN/TUN 接管，但路由接口无法证明 TCP 应答来自最终源站。"
+        } else {
+            "这是当前系统路由选择结果，并非逐跳追踪；无法单凭接口证明端到端路径。"
+        };
+        Ok(RouteDiagnostic { destination: ip.to_string(), interface, gateway: field("gateway:"),
+            flags: field("flags:"), note: note.into() })
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        Err("路由诊断目前仅支持 macOS".into())
+    }
+}
+
 #[tauri::command]
 pub(crate) fn save_config(
     app: AppHandle,
