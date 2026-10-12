@@ -305,6 +305,28 @@ function toggleIcmpWatch() {
   testIcmpComparison();
 }
 
+async function diagnoseHttpTiming() {
+  updateActiveTargetFromForm();
+  const target = { ...activeTarget() };
+  if (!['http','https'].includes(target.probeMode)) {
+    showMessage('仅 HTTP/HTTPS 目标支持阶段诊断', true); return;
+  }
+  const button = $('diagnoseHttpTiming');
+  button.disabled = true;
+  try {
+    const result = await invoke('diagnose_http_timing', { target });
+    const ms = n => n == null ? '--' : n.toFixed(1) + 'ms';
+    const detail = 'HTTP ' + result.httpStatus + ' · DNS ' + ms(result.dnsMs) +
+      ' · TCP ' + ms(result.tcpMs) + ' · TLS ' + ms(result.tlsMs) +
+      ' · 请求及服务等待 ' + ms(result.serverWaitMs) +
+      ' · 首字节累计 ' + ms(result.firstByteMs) + ' · ' + result.explanation;
+    $('testResult').textContent = detail;
+    lastProbeReport = [lastProbeReport || '', detail].filter(Boolean).join('\n');
+    $('copyProbeReport').disabled = false;
+  } catch (error) { $('testResult').textContent = String(error); }
+  finally { button.disabled = false; }
+}
+
 async function diagnoseCurrentRoute() {
   updateActiveTargetFromForm();
   const target = { ...activeTarget() };
@@ -809,6 +831,7 @@ async function boot() {
   $('testTarget').addEventListener('click', testCurrentTarget);
   $('testIcmp').addEventListener('click', testIcmpComparison);
   $('diagnoseRoute').addEventListener('click', diagnoseCurrentRoute);
+  $('diagnoseHttpTiming').addEventListener('click', diagnoseHttpTiming);
   $('watchIcmp').addEventListener('click', toggleIcmpWatch);
   window.addEventListener('beforeunload', stopIcmpWatch);
   $('exportHistory').addEventListener('click', exportRecentHistory);
