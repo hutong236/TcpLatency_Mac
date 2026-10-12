@@ -150,10 +150,67 @@ function updateFloatingRangeLabels() {
   if ($('floatingFontSizeValue')) $('floatingFontSizeValue').textContent = `${fontSize}px`;
 }
 
+let lastProbeReport = null;
+
+function probeReport(target, result) {
+  const timestamp = new Date().toISOString();
+  const mode = (result.probeMode || target.probeMode || 'tcp').toUpperCase();
+  const route = result.routeInterface || '未知';
+  const ms = value => Number.isFinite(value) ? value.toFixed(1) + ' ms' : '不可用';
+  const verified = result.status === 'ok';
+  const scope = mode === 'TCP' ? '仅 TCP 握手，不能证明 SSH/HTTP/业务可用'
+    : mode === 'SSH' ? '验证 SSH 协议标识，不代表登录认证成功'
+    : '验证 HTTP 2xx 响应头，不代表响应体或完整业务流程正常';
+  return [
+    'TcpLatency Mac · 单次探测诊断报告',
+    '时间 (UTC): ' + timestamp,
+    '目标: ' + target.host + ':' + target.port,
+    '模式: ' + mode,
+    '地址族: ' + (target.addressFamily || 'auto'),
+    ...(mode === 'HTTP' || mode === 'HTTPS' ? ['健康检查路径: ' + (target.httpPath || '/')] : []),
+    '结果: ' + (verified ? '验证通过' : '未通过验证') + ' (' + result.status + ')',
+    '总耗时: ' + ms(result.latencyMs),
+    'TCP 建连耗时: ' + ms(result.tcpMs),
+    'DNS 耗时: ' + ms(result.dnsMs),
+    '观测连接地址: ' + (result.resolvedAddress || '未知'),
+    '尝试地址: ' + ((result.attemptedAddresses || []).join(', ') || '未提供'),
+    '路由接口: ' + route,
+    '协议响应: ' + (result.responseDetail || '无'),
+    '错误: ' + (result.error || '无'),
+    '判定范围: ' + scope,
+    '注意: TCP 建连耗时不等于 ICMP Ping RTT；DNS 缓存可能使 DNS 耗时为 0。',
+    ...(route.startsWith('utun') ? ['路径提示: 发现 TUN/VPN 接口，不能据此认定代理伪造了连接结果。'] : []),
+  ].join('\\n');
+}
+
+async function copyProbeReport() {
+  if (!lastProbeReport) return;
+  try {
+    if (navigator.clipboard?.writeText) {
+      await navigator.clipboard.writeText(lastProbeReport);
+    } else {
+      const field = document.createElement('textarea');
+      field.value = lastProbeReport;
+      field.style.position = 'fixed';
+      field.style.opacity = '0';
+      document.body.appendChild(field);
+      field.select();
+      const copied = document.execCommand('copy');
+      field.remove();
+      if (!copied) throw new Error('系统未允许复制');
+    }
+    showMessage('诊断报告已复制，可粘贴到工单或排障记录');
+  } catch (error) {
+    showMessage('复制失败：' + String(error), true);
+  }
+}
+
 async function testCurrentTarget() {
   updateActiveTargetFromForm();
   const target = { ...activeTarget() };
   if (!target) return;
+  lastProbeReport = null;
+  $('copyProbeReport').disabled = true;
   const button = $('testTarget');
   const resultEl = $('testResult');
   button.disabled = true;
@@ -162,6 +219,8 @@ async function testCurrentTarget() {
   resultEl.textContent = '正在执行协议验证，请求可能经过 VPN / TUN…';
   try {
     const result = await invoke('test_target', { target });
+    lastProbeReport = probeReport(target, result);
+    $('copyProbeReport').disabled = false;
     const dns = result.dnsMs == null ? '' : ` · DNS ${result.dnsMs.toFixed(1)}ms`;
     const total = result.latencyMs == null ? '--' : `${result.latencyMs.toFixed(1)}ms`;
     const tcp = result.tcpMs == null ? '' : ` · TCP ${result.tcpMs.toFixed(1)}ms`;
@@ -571,6 +630,7 @@ async function boot() {
   });
 
   $('testTarget').addEventListener('click', testCurrentTarget);
+  $('copyProbeReport').addEventListener('click', copyProbeReport);
 
   for (const id of ['floatingOpacity', 'floatingFontSize']) {
     $(id).addEventListener('input', updateFloatingRangeLabels);
