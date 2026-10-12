@@ -1,5 +1,6 @@
 mod battery;
 mod commands;
+mod event_store;
 mod config;
 mod macos_window;
 mod probe;
@@ -46,6 +47,7 @@ fn main() {
             commands::get_snapshot,
             commands::get_all_snapshots,
             commands::get_history,
+            commands::get_incident_events,
             commands::load_cat_asset,
             commands::save_cat_asset,
             commands::test_target,
