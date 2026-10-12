@@ -110,6 +110,7 @@ struct TargetRuntime {
     last_notification_ms: u128,
     incident: Option<String>,
     endpoint_key: String,
+    last_logged_status: Option<String>,
 }
 
 impl TargetRuntime {
@@ -123,6 +124,7 @@ impl TargetRuntime {
             last_notification_ms: 0,
             incident: None,
             endpoint_key: endpoint_key(target),
+            last_logged_status: None,
         }
     }
 }
@@ -535,6 +537,24 @@ fn complete_probe(
         route_interface: result.route_interface,
     };
 
+    let status_category = if latency.is_none() { format!("failed:{status}") }
+        else if latency.unwrap_or_default() >= config.thresholds.high_ms { "high".to_string() }
+        else { "healthy".to_string() };
+    if runtime.last_logged_status.as_deref() != Some(&status_category) {
+        runtime.last_logged_status = Some(status_category.clone());
+        let event = crate::event_store::IncidentEvent {
+            timestamp_ms: now as i64,
+            target_id: target.id.clone(), target_name: target.name.clone(),
+            status: status_category,
+            detail: result.error.clone().unwrap_or_else(|| format!("{} ms", latency.unwrap_or_default())),
+        };
+        // The storage write runs off the scheduler, outside the shared runtime lock.
+        let _ = tokio::task::spawn_blocking(move || {
+            if let Err(err) = crate::event_store::write_event(event) {
+                eprintln!("Incident persistence failed: {err}");
+            }
+        });
+    }
     let previous_incident = runtime.incident.clone();
     if latency.is_none() {
         runtime.consecutive_failure = runtime.consecutive_failure.saturating_add(1);
