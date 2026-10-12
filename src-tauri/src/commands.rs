@@ -302,6 +302,93 @@ pub(crate) async fn diagnose_route(target: TargetConfig) -> Result<RouteDiagnost
     }
 }
 
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct HttpTimingDiagnostic {
+    pub(crate) dns_ms: f64,
+    pub(crate) tcp_ms: f64,
+    pub(crate) tls_ms: Option<f64>,
+    pub(crate) server_wait_ms: f64,
+    pub(crate) first_byte_ms: f64,
+    pub(crate) http_status: u16,
+    pub(crate) explanation: String,
+}
+
+/// curl supplies stage timestamps from ONE separate HTTP request.
+/// These metrics do not represent the reqwest monitoring request.
+#[tauri::command]
+pub(crate) async fn diagnose_http_timing(target: TargetConfig) -> Result<HttpTimingDiagnostic, String> {
+    if !matches!(target.probe_mode.as_str(), "http" | "https") {
+        return Err("分阶段请求诊断仅支持 HTTP/HTTPS".into());
+    }
+    let host = target.host.trim();
+    if host.is_empty() || host.len() > 253 || host.starts_with('-') ||
+        host.chars().any(|c| !(c.is_ascii_alphanumeric() || matches!(c, '.' | ':' | '-' | '_'))) {
+        return Err("Host 无效".into());
+    }
+    if target.port == 0 || !(100..=30_000).contains(&target.timeout_ms) ||
+        !target.http_path.starts_with('/') || target.http_path.len() > 512 ||
+        target.http_path.chars().any(char::is_control) {
+        return Err("端口、超时或请求路径无效".into());
+    }
+    #[cfg(target_os = "macos")]
+    {
+        let bracketed = if host.contains(':') && !host.starts_with('[') {
+            format!("[{host}]")
+        } else { host.to_string() };
+        let url = format!("{}://{}:{}{}", target.probe_mode, bracketed,
+            target.port, target.http_path);
+        let write_out = "%{time_namelookup} %{time_connect} %{time_appconnect} %{time_starttransfer} %{http_code}";
+        let mut cmd = tokio::process::Command::new("/usr/bin/curl");
+        cmd.args(["--silent", "--show-error", "--output", "/dev/null",
+            "--noproxy", "*", "--proxy", "", "--max-time",
+            &format!("{:.3}", target.timeout_ms as f64 / 1000.0),
+            "--http1.1", "--no-keepalive", "--write-out", write_out]);
+        if target.address_family == "ipv4" { cmd.arg("--ipv4"); }
+        else if target.address_family == "ipv6" { cmd.arg("--ipv6"); }
+        let output = tokio::time::timeout(
+            std::time::Duration::from_millis(target.timeout_ms + 1000),
+            cmd.arg("--").arg(&url).kill_on_drop(true).output()
+        ).await.map_err(|_| "HTTP 分阶段诊断超时".to_string())?
+            .map_err(|e| format!("启动诊断失败: {e}"))?;
+        if !output.status.success() {
+            return Err(format!("分阶段请求失败: {}", String::from_utf8_lossy(&output.stderr).trim()));
+        }
+        let raw = String::from_utf8_lossy(&output.stdout);
+        let fields: Vec<&str> = raw.split_whitespace().collect();
+        if fields.len() != 5 { return Err("阶段计时输出格式不符合预期".into()); }
+        let parse = |i: usize| -> Result<f64, String> {
+            let value: f64 = fields[i].parse().map_err(|_| "阶段计时值无法解析".to_string())?;
+            if !value.is_finite() || value < 0.0 { return Err("阶段计时值无效".into()); }
+            Ok(value * 1000.0)
+        };
+        let dns = parse(0)?;
+        let connected = parse(1)?;
+        let tls_done = parse(2)?;
+        let first = parse(3)?;
+        let code: u16 = fields[4].parse().map_err(|_| "HTTP 状态码解析失败".to_string())?;
+        if connected < dns || first < connected ||
+            (target.probe_mode == "https" && (tls_done < connected || first < tls_done)) {
+            return Err("阶段时间戳顺序异常".into());
+        }
+        let handshake_end = if target.probe_mode == "https" { tls_done } else { connected };
+        Ok(HttpTimingDiagnostic {
+            dns_ms: dns,
+            tcp_ms: connected - dns,
+            tls_ms: if target.probe_mode == "https" { Some(tls_done - connected) } else { None },
+            server_wait_ms: first - handshake_end,
+            first_byte_ms: first,
+            http_status: code,
+            explanation: "独立 curl GET 请求的真实阶段计时；不等于后台 reqwest 监测样本。首字节等待含请求发送和服务处理，可能经透明 TUN/VPN。".into(),
+        })
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        Err("阶段诊断当前仅支持 macOS".into())
+    }
+}
+
 #[tauri::command]
 pub(crate) fn save_config(
     app: AppHandle,
