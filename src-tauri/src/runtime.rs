@@ -540,7 +540,7 @@ fn complete_probe(
     let status_category = if latency.is_none() { format!("failed:{status}") }
         else if latency.unwrap_or_default() >= config.thresholds.high_ms { "high".to_string() }
         else { "healthy".to_string() };
-    if runtime.last_logged_status.as_deref() != Some(&status_category) {
+    if runtime.last_logged_status.as_deref() != Some(status_category.as_str()) {
         runtime.last_logged_status = Some(status_category.clone());
         let event = crate::event_store::IncidentEvent {
             timestamp_ms: now as i64,
@@ -548,7 +548,7 @@ fn complete_probe(
             status: status_category,
             detail: result.error.clone().unwrap_or_else(|| format!("{} ms", latency.unwrap_or_default())),
         };
-        // The storage write runs off the scheduler, outside the shared runtime lock.
+        // Schedule a non-blocking write; the SQLite operation runs in the blocking pool.
         let _ = tokio::task::spawn_blocking(move || {
             if let Err(err) = crate::event_store::write_event(event) {
                 eprintln!("Incident persistence failed: {err}");
