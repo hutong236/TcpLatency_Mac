@@ -219,7 +219,7 @@ async function testIcmpComparison() {
     const line = 'ICMP ' + result.status + ' · ' + latency + ' · ' + result.detail +
       '。注意：ICMP 与 TCP 属于不同检测，不应直接比较或混入同一个延时平均值。';
     box.textContent = line;
-    lastProbeReport = (lastProbeReport || '') + '\\n' + line;
+    lastProbeReport = (lastProbeReport || '') + '\n' + line;
     $('copyProbeReport').disabled = false;
   } catch (error) { box.textContent = String(error); }
   finally { button.disabled = false; }
@@ -238,7 +238,7 @@ async function exportRecentHistory() {
     const rows = [['timestamp_iso', 'latency_ms', 'status'], ...samples.map(p => [
       new Date(p.timestampMs).toISOString(), p.latencyMs ?? '', p.status ?? (p.latencyMs == null ? 'failed' : 'ok'),
     ])];
-    const csv = '\\uFEFF' + rows.map(row => row.map(csvField).join(',')).join('\\r\\n');
+    const csv = '\uFEFF' + rows.map(row => row.map(csvField).join(',')).join('\r\n');
     const file = new Blob([csv], { type: 'text/csv;charset=utf-8' });
     const url = URL.createObjectURL(file);
     const link = document.createElement('a');
