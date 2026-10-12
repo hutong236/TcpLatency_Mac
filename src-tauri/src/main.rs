@@ -1,5 +1,6 @@
 mod battery;
 mod commands;
+mod event_store;
 mod config;
 mod macos_window;
 mod probe;
@@ -46,9 +47,14 @@ fn main() {
             commands::get_snapshot,
             commands::get_all_snapshots,
             commands::get_history,
+            commands::get_incident_events,
+            commands::get_hourly_history,
             commands::load_cat_asset,
             commands::save_cat_asset,
             commands::test_target,
+            commands::test_icmp,
+            commands::diagnose_route,
+            commands::diagnose_http_timing,
             commands::save_config,
             commands::set_paused,
             commands::is_paused,

@@ -1,0 +1,28 @@
+name: Tag v0.15.0 release
+on:
+  push:
+    branches: [main]
+permissions:
+  contents: write
+jobs:
+  tag:
+    if: startsWith(github.event.head_commit.message, 'release: v0.15.0')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Verify version and create release tag
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -q '^version = "0.15.0"$' src-tauri/Cargo.toml
+          grep -q '"version": "0.15.0"' src-tauri/tauri.conf.json
+          git fetch --tags --force
+          if git show-ref --tags --verify --quiet refs/tags/v0.15.0; then
+            test "$(git rev-list -n 1 refs/tags/v0.15.0)" = "$GITHUB_SHA"
+            echo "v0.15.0 already exists at this commit"
+          else
+            git tag -a v0.15.0 -m "TCP Latency Mac v0.15.0 — network diagnostics and history"
+            git push origin refs/tags/v0.15.0
+          fi

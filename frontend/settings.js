@@ -205,6 +205,200 @@ async function copyProbeReport() {
   }
 }
 
+async function refreshHourly() {
+  const body = $('hourlyRows');
+  const targetId = config?.activeTargetId;
+  if (!targetId) return;
+  try {
+    const items = await invoke('get_hourly_history', {targetId, limit: 168});
+    if (targetId !== config?.activeTargetId) return;
+    body.innerHTML = items.length ? items.map(x => '<tr><td>' +
+      escapeHtml(new Date(x.hourMs).toLocaleString()) + '</td><td>' +
+      x.sampleCount + '</td><td>' +
+      (x.sampleCount ? (100*x.successCount/x.sampleCount).toFixed(1) : '0.0') + '%</td><td>' +
+      fmt(x.averageMs) + '</td><td>' + fmt(x.minMs) + '</td><td>' +
+      fmt(x.maxMs) + '</td></tr>').join('') :
+      '<tr><td colspan="6">暂无已归档的探测记录</td></tr>';
+  } catch(err) { body.textContent = '统计读取失败：' + String(err); }
+}
+
+async function exportHourly() {
+  try {
+    const items = await invoke('get_hourly_history', {targetId: config.activeTargetId, limit: 720});
+    const rows = [['hour_iso','sample_count','success_count','success_percent','average_ms','min_ms','max_ms'],
+      ...items.map(x => [new Date(x.hourMs).toISOString(),x.sampleCount,x.successCount,
+        x.sampleCount ? (100*x.successCount/x.sampleCount).toFixed(2) : '0.00',
+        x.averageMs ?? '',x.minMs ?? '',x.maxMs ?? ''])];
+    const csv = '\uFEFF' + rows.map(row => row.map(csvField).join(',')).join('\r\n');
+    const url = URL.createObjectURL(new Blob([csv], {type:'text/csv;charset=utf-8'}));
+    const anchor = document.createElement('a');
+    anchor.href = url;
+    anchor.download = 'tcp-latency-hourly-' + new Date().toISOString().replace(/[:.]/g,'-') + '.csv';
+    document.body.appendChild(anchor);
+    anchor.click();
+    anchor.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+    showMessage('已导出 ' + items.length + ' 个小时聚合记录');
+  } catch(err) { showMessage('导出失败：' + String(err), true); }
+}
+
+async function exportIncidentEvents() {
+  try {
+    const events = await invoke('get_incident_events', { limit: 500 });
+    const rows = [['timestamp_iso','target_id','target_name','status','detail'],
+      ...events.map(e => [new Date(e.timestampMs).toISOString(),e.targetId,e.targetName,e.status,e.detail])];
+    const csv = '\uFEFF' + rows.map(row => row.map(csvField).join(',')).join('\r\n');
+    const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
+    const anchor = document.createElement('a');
+    anchor.href = url;
+    anchor.download = 'tcp-latency-incidents-' + new Date().toISOString().replace(/[:.]/g,'-') + '.csv';
+    document.body.appendChild(anchor);
+    anchor.click();
+    anchor.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+    showMessage('已导出最近 ' + events.length + ' 条事件');
+  } catch (error) { showMessage('导出事件失败：' + String(error), true); }
+}
+
+async function refreshIncidentEvents() {
+  const body = $('incidentRows');
+  if (!body) return;
+  try {
+    const events = await invoke('get_incident_events', { limit: 100 });
+    body.innerHTML = events.length ? events.map(e =>
+      '<tr><td>' + escapeHtml(new Date(e.timestampMs).toLocaleString()) +
+      '</td><td>' + escapeHtml(e.targetName) +
+      '</td><td>' + escapeHtml(e.status) +
+      '</td><td>' + escapeHtml(e.detail) + '</td></tr>'
+    ).join('') : '<tr><td colspan="4">暂无异常事件</td></tr>';
+  } catch (err) { body.textContent = '事件读取失败：' + String(err); }
+}
+
+let icmpWatchTimer = null;
+let icmpWatchBusy = false;
+let icmpWatchTargetId = null;
+
+function stopIcmpWatch() {
+  if (icmpWatchTimer !== null) clearInterval(icmpWatchTimer);
+  icmpWatchTimer = null;
+  icmpWatchTargetId = null;
+  const button = $('watchIcmp');
+  if (button) {
+    button.textContent = '开启持续 ICMP 对照';
+    button.setAttribute('aria-pressed', 'false');
+  }
+}
+
+function toggleIcmpWatch() {
+  if (icmpWatchTimer !== null) {
+    stopIcmpWatch();
+    showMessage('持续 ICMP 对照已停止');
+    return;
+  }
+  updateActiveTargetFromForm();
+  icmpWatchTargetId = config?.activeTargetId;
+  const button = $('watchIcmp');
+  button.textContent = '停止持续 ICMP 对照';
+  button.setAttribute('aria-pressed', 'true');
+  // Diagnostic overlay only: does not change the background TCP health metric.
+  icmpWatchTimer = setInterval(() => {
+    if (document.hidden || icmpWatchBusy || config?.activeTargetId !== icmpWatchTargetId) return;
+    testIcmpComparison();
+  }, 5000);
+  testIcmpComparison();
+}
+
+async function diagnoseHttpTiming() {
+  updateActiveTargetFromForm();
+  const target = { ...activeTarget() };
+  if (!['http','https'].includes(target.probeMode)) {
+    showMessage('仅 HTTP/HTTPS 目标支持阶段诊断', true); return;
+  }
+  const button = $('diagnoseHttpTiming');
+  button.disabled = true;
+  try {
+    const result = await invoke('diagnose_http_timing', { target });
+    const ms = n => n == null ? '--' : n.toFixed(1) + 'ms';
+    const detail = 'HTTP ' + result.httpStatus + ' · DNS ' + ms(result.dnsMs) +
+      ' · TCP ' + ms(result.tcpMs) + ' · TLS ' + ms(result.tlsMs) +
+      ' · 请求及服务等待 ' + ms(result.serverWaitMs) +
+      ' · 首字节累计 ' + ms(result.firstByteMs) + ' · ' + result.explanation;
+    $('testResult').textContent = detail;
+    lastProbeReport = [lastProbeReport || '', detail].filter(Boolean).join('\n');
+    $('copyProbeReport').disabled = false;
+  } catch (error) { $('testResult').textContent = String(error); }
+  finally { button.disabled = false; }
+}
+
+async function diagnoseCurrentRoute() {
+  updateActiveTargetFromForm();
+  const target = { ...activeTarget() };
+  const button = $('diagnoseRoute');
+  button.disabled = true;
+  try {
+    const result = await invoke('diagnose_route', { target });
+    const message = ['目的地址 ' + result.destination,
+      '接口 ' + (result.interface || '未知'),
+      '网关 ' + (result.gateway || '直连/未知'),
+      '路由标志 ' + (result.flags || '未知'), result.note].join(' · ');
+    $('testResult').textContent = message;
+    lastProbeReport = [(lastProbeReport || ''), '系统路由诊断：' + message].filter(Boolean).join('\n');
+    $('copyProbeReport').disabled = false;
+  } catch (error) { $('testResult').textContent = String(error); }
+  finally { button.disabled = false; }
+}
+
+async function testIcmpComparison() {
+  updateActiveTargetFromForm();
+  const target = { ...activeTarget() };
+  if (!target) return;
+  if (icmpWatchBusy) return;
+  icmpWatchBusy = true;
+  const button = $('testIcmp');
+  button.disabled = true;
+  const box = $('testResult');
+  box.textContent = '正在单独检测 ICMP Echo…';
+  try {
+    const result = await invoke('test_icmp', { target });
+    const latency = result.latencyMs == null ? '--' : result.latencyMs.toFixed(1) + 'ms';
+    const line = 'ICMP ' + result.status + ' · ' + latency + ' · ' + result.detail +
+      '。注意：ICMP 与 TCP 属于不同检测，不应直接比较或混入同一个延时平均值。';
+    box.textContent = line;
+    // Keep the report bounded during five-second watch mode.
+    const previous = (lastProbeReport || '').split('\n').slice(-45).join('\n');
+    lastProbeReport = previous ? previous + '\n' + line : line;
+    $('copyProbeReport').disabled = false;
+  } catch (error) { box.textContent = String(error); }
+  finally { button.disabled = false; icmpWatchBusy = false; }
+}
+
+function csvField(value) {
+  const text = String(value ?? '');
+  return '"' + text.replace(/"/g, '""') + '"';
+}
+
+async function exportRecentHistory() {
+  const targetId = config?.activeTargetId;
+  if (!targetId) return;
+  try {
+    const samples = await invoke('get_history', { targetId });
+    const rows = [['timestamp_iso', 'latency_ms', 'status'], ...samples.map(p => [
+      new Date(p.timestampMs).toISOString(), p.latencyMs ?? '', p.status ?? (p.latencyMs == null ? 'failed' : 'ok'),
+    ])];
+    const csv = '\uFEFF' + rows.map(row => row.map(csvField).join(',')).join('\r\n');
+    const file = new Blob([csv], { type: 'text/csv;charset=utf-8' });
+    const url = URL.createObjectURL(file);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = 'tcp-latency-' + new Date().toISOString().replace(/[:.]/g, '-') + '.csv';
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+    showMessage('最近 60 秒历史记录已导出');
+  } catch (error) { showMessage('导出失败：' + String(error), true); }
+}
+
 async function testCurrentTarget() {
   updateActiveTargetFromForm();
   const target = { ...activeTarget() };
@@ -534,6 +728,13 @@ function setupSectionNavigation() {
 
 async function boot() {
   setupSectionNavigation();
+  $('refreshEvents')?.addEventListener('click', refreshIncidentEvents);
+  $('refreshHourly')?.addEventListener('click', refreshHourly);
+  $('exportHourly')?.addEventListener('click', exportHourly);
+  $('exportEvents')?.addEventListener('click', exportIncidentEvents);
+  refreshIncidentEvents();
+  // Initial view loads without blocking configuration rendering.
+  setTimeout(() => { if (config?.activeTargetId) refreshHourly(); }, 250);
   config = await invoke('get_config');
   renderConfig();
   $('paused').checked = await invoke('is_paused');
@@ -548,6 +749,7 @@ async function boot() {
 
   async function selectTarget(id) {
     if (!id || id === config.activeTargetId || switchingTarget) return;
+    stopIcmpWatch();
     switchingTarget = true;
     const oldId = config.activeTargetId;
     updateActiveTargetFromForm();
@@ -563,6 +765,7 @@ async function boot() {
       const snapshot = snapshots.get(id);
       if (snapshot) renderSnapshot(snapshot);
       queueChart(true);
+      refreshHourly();
     } finally {
       switchingTarget = false;
     }
@@ -630,6 +833,12 @@ async function boot() {
   });
 
   $('testTarget').addEventListener('click', testCurrentTarget);
+  $('testIcmp').addEventListener('click', testIcmpComparison);
+  $('diagnoseRoute').addEventListener('click', diagnoseCurrentRoute);
+  $('diagnoseHttpTiming').addEventListener('click', diagnoseHttpTiming);
+  $('watchIcmp').addEventListener('click', toggleIcmpWatch);
+  window.addEventListener('beforeunload', stopIcmpWatch);
+  $('exportHistory').addEventListener('click', exportRecentHistory);
   $('copyProbeReport').addEventListener('click', copyProbeReport);
 
   for (const id of ['floatingOpacity', 'floatingFontSize']) {

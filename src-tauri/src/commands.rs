@@ -1,4 +1,5 @@
 use crate::{
+    event_store::{recent_events, hourly_history, IncidentEvent, HourlyAggregate},
     battery::BatteryStatus,
     config::{persist_config, validate_config, AppConfig, TargetConfig},
     macos_window::{
@@ -101,6 +102,17 @@ pub(crate) fn get_history(
 }
 
 #[tauri::command]
+pub(crate) async fn get_hourly_history(target_id: String, limit: u32) -> Result<Vec<HourlyAggregate>, String> {
+    tokio::task::spawn_blocking(move || hourly_history(target_id, limit))
+        .await.map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+pub(crate) async fn get_incident_events(limit: u32) -> Result<Vec<IncidentEvent>, String> {
+    tokio::task::spawn_blocking(move || recent_events(limit)).await.map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
 pub(crate) fn load_cat_asset(path: String) -> Result<CatAsset, String> {
     let path = Path::new(path.trim());
     let mime = cat_asset_mime(path)
@@ -164,7 +176,7 @@ pub(crate) async fn test_target(mut target: TargetConfig) -> Result<ProbeResult,
         return Err("探测协议必须是 tcp / ssh / http / https".into());
     }
     if !target.http_path.starts_with('/') || target.http_path.len() > 512 ||
-        target.http_path.chars().any(char::is_control) {
+        target.http_path.chars().any(|ch| ch.is_control() || ch.is_whitespace()) {
         return Err("HTTP 路径必须以 / 开头且不能包含控制字符".into());
     }
     if target.host.chars().any(|c| c.is_control() || c.is_whitespace()) ||
@@ -172,6 +184,209 @@ pub(crate) async fn test_target(mut target: TargetConfig) -> Result<ProbeResult,
         return Err("Host 必须是主机名或 IP，不能填写完整 URL".into());
     }
     Ok(probe_target(&target).await)
+}
+
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct IcmpDiagnostic {
+    status: String,
+    latency_ms: Option<f64>,
+    detail: String,
+}
+
+/// Independent one-shot ICMP comparison. This is not TCP RTT, and firewalls
+/// may block ICMP even when the application endpoint is healthy.
+#[tauri::command]
+pub(crate) async fn test_icmp(target: TargetConfig) -> Result<IcmpDiagnostic, String> {
+    let host = target.host.trim();
+    if host.is_empty() || host.len() > 253 ||
+        host.starts_with('-') ||
+        host.chars().any(|c| !(c.is_ascii_alphanumeric() || matches!(c, '.' | ':' | '-' | '_'))) {
+        return Err("ICMP 目标必须是合法主机名或 IP 地址".into());
+    }
+    if !matches!(target.address_family.as_str(), "auto" | "ipv4" | "ipv6") {
+        return Err("地址族必须是 auto / ipv4 / ipv6".into());
+    }
+    #[cfg(target_os = "macos")]
+    {
+        let mut ping = tokio::process::Command::new("/sbin/ping");
+        if target.address_family == "ipv6" {
+            ping = tokio::process::Command::new("/sbin/ping6");
+        }
+        let output = tokio::time::timeout(
+            std::time::Duration::from_secs(4),
+            ping.args(["-n", "-c", "1", "-W", "2000", host])
+                .kill_on_drop(true).output(),
+        ).await;
+        match output {
+            Err(_) => Ok(IcmpDiagnostic { status: "timeout".into(), latency_ms: None, detail: "ICMP 命令超时；这不代表 TCP 不可达".into() }),
+            Ok(Err(err)) => Ok(IcmpDiagnostic { status: "unavailable".into(), latency_ms: None, detail: format!("无法执行 ICMP: {err}") }),
+            Ok(Ok(output)) => {
+                let stdout = String::from_utf8_lossy(&output.stdout);
+                let sample = stdout.lines().find_map(|line| {
+                    let part = line.split("time=").nth(1)?;
+                    part.split_whitespace().next()?.parse::<f64>().ok()
+                });
+                let status = if output.status.success() && sample.is_some() { "ok" } else { "blocked_or_failed" };
+                Ok(IcmpDiagnostic {
+                    status: status.into(), latency_ms: sample,
+                    detail: if status == "ok" { "收到 ICMP Echo Reply".into() }
+                        else { "未收到 ICMP Echo Reply；可能被防火墙过滤或目标不可达".into() },
+                })
+            }
+        }
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        Ok(IcmpDiagnostic { status: "unavailable".into(), latency_ms: None, detail: "ICMP 对照检测目前仅支持 macOS".into() })
+    }
+}
+
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct RouteDiagnostic {
+    destination: String,
+    interface: Option<String>,
+    gateway: Option<String>,
+    flags: Option<String>,
+    note: String,
+}
+
+#[tauri::command]
+pub(crate) async fn diagnose_route(target: TargetConfig) -> Result<RouteDiagnostic, String> {
+    let host = target.host.trim();
+    if host.is_empty() || host.len() > 253 || host.starts_with('-')
+        || host.chars().any(|c| !(c.is_ascii_alphanumeric() || matches!(c, '.' | ':' | '-' | '_'))) {
+        return Err("目标主机名或 IP 格式无效".into());
+    }
+    #[cfg(target_os = "macos")]
+    {
+        let lookup = tokio::time::timeout(
+            std::time::Duration::from_secs(3),
+            tokio::net::lookup_host((host, target.port.max(1))),
+        ).await.map_err(|_| "DNS 解析超时".to_string())?
+            .map_err(|e| format!("DNS 解析失败: {e}"))?;
+        let ip = lookup.into_iter().find(|a| match target.address_family.as_str() {
+            "ipv4" => a.is_ipv4(),
+            "ipv6" => a.is_ipv6(),
+            _ => true,
+        }).ok_or_else(|| "没有与地址族匹配的解析地址".to_string())?.ip();
+        let output = tokio::time::timeout(
+            std::time::Duration::from_secs(2),
+            tokio::process::Command::new("/sbin/route")
+                .args(["-n", "get", &ip.to_string()])
+                .kill_on_drop(true).output(),
+        ).await.map_err(|_| "系统路由查询超时".to_string())?
+            .map_err(|e| format!("系统路由查询失败: {e}"))?;
+        if !output.status.success() {
+            return Err(format!("系统路由查询失败: {}", String::from_utf8_lossy(&output.stderr)));
+        }
+        let output_text = String::from_utf8_lossy(&output.stdout);
+        let field = |key: &str| output_text.lines()
+            .find_map(|line| line.trim().strip_prefix(key))
+            .map(|v| v.trim().to_string());
+        let interface = field("interface:");
+        let note = if interface.as_deref().is_some_and(|i| i.starts_with("utun")) {
+            "目标路由经过 utun；可能受 VPN/TUN 接管，但路由接口无法证明 TCP 应答来自最终源站。"
+        } else {
+            "这是当前系统路由选择结果，并非逐跳追踪；无法单凭接口证明端到端路径。"
+        };
+        Ok(RouteDiagnostic { destination: ip.to_string(), interface, gateway: field("gateway:"),
+            flags: field("flags:"), note: note.into() })
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        Err("路由诊断目前仅支持 macOS".into())
+    }
+}
+
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct HttpTimingDiagnostic {
+    pub(crate) dns_ms: f64,
+    pub(crate) tcp_ms: f64,
+    pub(crate) tls_ms: Option<f64>,
+    pub(crate) server_wait_ms: f64,
+    pub(crate) first_byte_ms: f64,
+    pub(crate) http_status: u16,
+    pub(crate) explanation: String,
+}
+
+/// curl supplies stage timestamps from ONE separate HTTP request.
+/// These metrics do not represent the reqwest monitoring request.
+#[tauri::command]
+pub(crate) async fn diagnose_http_timing(target: TargetConfig) -> Result<HttpTimingDiagnostic, String> {
+    if !matches!(target.probe_mode.as_str(), "http" | "https") {
+        return Err("分阶段请求诊断仅支持 HTTP/HTTPS".into());
+    }
+    let host = target.host.trim();
+    if host.is_empty() || host.len() > 253 || host.starts_with('-') ||
+        host.chars().any(|c| !(c.is_ascii_alphanumeric() || matches!(c, '.' | ':' | '-' | '_'))) {
+        return Err("Host 无效".into());
+    }
+    if target.port == 0 || !(100..=30_000).contains(&target.timeout_ms) ||
+        !target.http_path.starts_with('/') || target.http_path.len() > 512 ||
+        target.http_path.chars().any(char::is_control) {
+        return Err("端口、超时或请求路径无效".into());
+    }
+    #[cfg(target_os = "macos")]
+    {
+        let bracketed = if host.contains(':') && !host.starts_with('[') {
+            format!("[{host}]")
+        } else { host.to_string() };
+        let url = format!("{}://{}:{}{}", target.probe_mode, bracketed,
+            target.port, target.http_path);
+        let write_out = "%{time_namelookup} %{time_connect} %{time_appconnect} %{time_starttransfer} %{http_code}";
+        let mut cmd = tokio::process::Command::new("/usr/bin/curl");
+        cmd.args(["--silent", "--show-error", "--output", "/dev/null",
+            "--noproxy", "*", "--proxy", "", "--max-time",
+            &format!("{:.3}", target.timeout_ms as f64 / 1000.0),
+            "--http1.1", "--no-keepalive", "--write-out", write_out]);
+        if target.address_family == "ipv4" { cmd.arg("--ipv4"); }
+        else if target.address_family == "ipv6" { cmd.arg("--ipv6"); }
+        let output = tokio::time::timeout(
+            std::time::Duration::from_millis(target.timeout_ms + 1000),
+            cmd.arg("--").arg(&url).kill_on_drop(true).output()
+        ).await.map_err(|_| "HTTP 分阶段诊断超时".to_string())?
+            .map_err(|e| format!("启动诊断失败: {e}"))?;
+        if !output.status.success() {
+            return Err(format!("分阶段请求失败: {}", String::from_utf8_lossy(&output.stderr).trim()));
+        }
+        let raw = String::from_utf8_lossy(&output.stdout);
+        let fields: Vec<&str> = raw.split_whitespace().collect();
+        if fields.len() != 5 { return Err("阶段计时输出格式不符合预期".into()); }
+        let parse = |i: usize| -> Result<f64, String> {
+            let value: f64 = fields[i].parse().map_err(|_| "阶段计时值无法解析".to_string())?;
+            if !value.is_finite() || value < 0.0 { return Err("阶段计时值无效".into()); }
+            Ok(value * 1000.0)
+        };
+        let dns = parse(0)?;
+        let connected = parse(1)?;
+        let tls_done = parse(2)?;
+        let first = parse(3)?;
+        let code: u16 = fields[4].parse().map_err(|_| "HTTP 状态码解析失败".to_string())?;
+        if code == 0 || connected <= 0.0 || first < connected || connected < dns ||
+            (target.probe_mode == "https" && (tls_done < connected || first < tls_done)) {
+            return Err("阶段时间戳顺序异常".into());
+        }
+        let handshake_end = if target.probe_mode == "https" { tls_done } else { connected };
+        Ok(HttpTimingDiagnostic {
+            dns_ms: dns,
+            tcp_ms: connected - dns,
+            tls_ms: if target.probe_mode == "https" { Some(tls_done - connected) } else { None },
+            server_wait_ms: first - handshake_end,
+            first_byte_ms: first,
+            http_status: code,
+            explanation: "独立 curl GET 请求的真实阶段计时；不等于后台 reqwest 监测样本。首字节等待含请求发送和服务处理，可能经透明 TUN/VPN。".into(),
+        })
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        Err("阶段诊断当前仅支持 macOS".into())
+    }
 }
 
 #[tauri::command]
