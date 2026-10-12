@@ -205,6 +205,53 @@ async function copyProbeReport() {
   }
 }
 
+async function testIcmpComparison() {
+  updateActiveTargetFromForm();
+  const target = { ...activeTarget() };
+  if (!target) return;
+  const button = $('testIcmp');
+  button.disabled = true;
+  const box = $('testResult');
+  box.textContent = '正在单独检测 ICMP Echo…';
+  try {
+    const result = await invoke('test_icmp', { target });
+    const latency = result.latencyMs == null ? '--' : result.latencyMs.toFixed(1) + 'ms';
+    const line = 'ICMP ' + result.status + ' · ' + latency + ' · ' + result.detail +
+      '。注意：ICMP 与 TCP 属于不同检测，不应直接比较或混入同一个延时平均值。';
+    box.textContent = line;
+    lastProbeReport = (lastProbeReport || '') + '\\n' + line;
+    $('copyProbeReport').disabled = false;
+  } catch (error) { box.textContent = String(error); }
+  finally { button.disabled = false; }
+}
+
+function csvField(value) {
+  const text = String(value ?? '');
+  return '"' + text.replace(/"/g, '""') + '"';
+}
+
+async function exportRecentHistory() {
+  const targetId = config?.activeTargetId;
+  if (!targetId) return;
+  try {
+    const samples = await invoke('get_history', { targetId });
+    const rows = [['timestamp_iso', 'latency_ms', 'status'], ...samples.map(p => [
+      new Date(p.timestampMs).toISOString(), p.latencyMs ?? '', p.status ?? (p.latencyMs == null ? 'failed' : 'ok'),
+    ])];
+    const csv = '\\uFEFF' + rows.map(row => row.map(csvField).join(',')).join('\\r\\n');
+    const file = new Blob([csv], { type: 'text/csv;charset=utf-8' });
+    const url = URL.createObjectURL(file);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = 'tcp-latency-' + new Date().toISOString().replace(/[:.]/g, '-') + '.csv';
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+    showMessage('最近 60 秒历史记录已导出');
+  } catch (error) { showMessage('导出失败：' + String(error), true); }
+}
+
 async function testCurrentTarget() {
   updateActiveTargetFromForm();
   const target = { ...activeTarget() };
@@ -630,6 +677,8 @@ async function boot() {
   });
 
   $('testTarget').addEventListener('click', testCurrentTarget);
+  $('testIcmp').addEventListener('click', testIcmpComparison);
+  $('exportHistory').addEventListener('click', exportRecentHistory);
   $('copyProbeReport').addEventListener('click', copyProbeReport);
 
   for (const id of ['floatingOpacity', 'floatingFontSize']) {
