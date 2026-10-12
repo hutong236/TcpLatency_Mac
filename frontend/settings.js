@@ -207,8 +207,11 @@ async function copyProbeReport() {
 
 async function refreshHourly() {
   const body = $('hourlyRows');
+  const targetId = config?.activeTargetId;
+  if (!targetId) return;
   try {
-    const items = await invoke('get_hourly_history', {targetId: config.activeTargetId, limit: 168});
+    const items = await invoke('get_hourly_history', {targetId, limit: 168});
+    if (targetId !== config?.activeTargetId) return;
     body.innerHTML = items.length ? items.map(x => '<tr><td>' +
       escapeHtml(new Date(x.hourMs).toLocaleString()) + '</td><td>' +
       x.sampleCount + '</td><td>' +
@@ -762,6 +765,7 @@ async function boot() {
       const snapshot = snapshots.get(id);
       if (snapshot) renderSnapshot(snapshot);
       queueChart(true);
+      refreshHourly();
     } finally {
       switchingTarget = false;
     }
