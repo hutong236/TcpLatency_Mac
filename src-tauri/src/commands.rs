@@ -1,5 +1,5 @@
 use crate::{
-    event_store::{recent_events, IncidentEvent},
+    event_store::{recent_events, hourly_history, IncidentEvent, HourlyAggregate},
     battery::BatteryStatus,
     config::{persist_config, validate_config, AppConfig, TargetConfig},
     macos_window::{
@@ -99,6 +99,12 @@ pub(crate) fn get_history(
     target_id: String,
 ) -> Vec<HistoryPoint> {
     history_for_target(state.inner().as_ref(), &target_id)
+}
+
+#[tauri::command]
+pub(crate) async fn get_hourly_history(target_id: String, limit: u32) -> Result<Vec<HourlyAggregate>, String> {
+    tokio::task::spawn_blocking(move || hourly_history(target_id, limit))
+        .await.map_err(|e| e.to_string())?
 }
 
 #[tauri::command]
