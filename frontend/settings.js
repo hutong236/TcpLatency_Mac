@@ -205,6 +205,24 @@ async function copyProbeReport() {
   }
 }
 
+async function exportIncidentEvents() {
+  try {
+    const events = await invoke('get_incident_events', { limit: 500 });
+    const rows = [['timestamp_iso','target_id','target_name','status','detail'],
+      ...events.map(e => [new Date(e.timestampMs).toISOString(),e.targetId,e.targetName,e.status,e.detail])];
+    const csv = '\uFEFF' + rows.map(row => row.map(csvField).join(',')).join('\r\n');
+    const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
+    const anchor = document.createElement('a');
+    anchor.href = url;
+    anchor.download = 'tcp-latency-incidents-' + new Date().toISOString().replace(/[:.]/g,'-') + '.csv';
+    document.body.appendChild(anchor);
+    anchor.click();
+    anchor.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+    showMessage('已导出最近 ' + events.length + ' 条事件');
+  } catch (error) { showMessage('导出事件失败：' + String(error), true); }
+}
+
 async function refreshIncidentEvents() {
   const body = $('incidentRows');
   if (!body) return;
@@ -632,6 +650,7 @@ function setupSectionNavigation() {
 async function boot() {
   setupSectionNavigation();
   $('refreshEvents')?.addEventListener('click', refreshIncidentEvents);
+  $('exportEvents')?.addEventListener('click', exportIncidentEvents);
   refreshIncidentEvents();
   config = await invoke('get_config');
   renderConfig();
