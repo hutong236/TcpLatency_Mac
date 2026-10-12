@@ -52,6 +52,7 @@ fn main() {
             commands::save_cat_asset,
             commands::test_target,
             commands::test_icmp,
+            commands::diagnose_route,
             commands::save_config,
             commands::set_paused,
             commands::is_paused,
