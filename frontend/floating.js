@@ -134,7 +134,10 @@ function render(snapshot) {
   const targetLabel = snapshot.targetName || snapshot.host || `${snapshot.host}:${snapshot.port}`;
   const modeLabel = (snapshot.probeMode || 'tcp').toUpperCase();
   const targetTitle = `${snapshot.host || '--'}:${snapshot.port || '--'}`;
-  const ariaLabel = `${targetLabel} · ${modeLabel} 网络探测状态`;
+  const scope = modeLabel === 'TCP' ? '仅 TCP 连接，不代表业务健康'
+    : modeLabel === 'SSH' ? 'SSH 服务标识验证'
+    : 'HTTP 响应头验证，不包含响应体';
+  const ariaLabel = `${targetLabel} · ${modeLabel} 网络探测状态 · ${scope}`;
   const statusTitle = snapshot.status || 'unknown';
 
   const displayTarget = `${targetLabel} · ${modeLabel}`;
@@ -142,7 +145,7 @@ function render(snapshot) {
   if (targetEl.title !== targetTitle) targetEl.title = targetTitle;
   if (floatingEl.getAttribute('aria-label') !== ariaLabel) floatingEl.setAttribute('aria-label', ariaLabel);
   const route = snapshot.routeInterface || '未知';
-  const tooltip = `${modeLabel} · ${statusTitle} · 路由 ${route}${route.startsWith('utun') ? ' · TUN/VPN，可能经过代理' : ''}`;
+  const tooltip = `${modeLabel} · ${statusTitle} · ${scope} · 路由 ${route}${route.startsWith('utun') ? ' · TUN/VPN 路由，不能确认源站' : ''}`;
   if (statusDotEl.getAttribute('title') !== tooltip) statusDotEl.setAttribute('title', tooltip);
 
   if (snapshot.batteryPaused) {
