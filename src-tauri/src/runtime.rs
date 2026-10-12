@@ -474,6 +474,13 @@ fn complete_probe(
     let now = now_millis();
     let latency = result.latency_ms;
     let status = result.status.clone();
+    // Persist one sample per completed probe, independently of user notifications.
+    let aggregate_target = target.id.clone();
+    let _ = tokio::task::spawn_blocking(move || {
+        if let Err(err) = crate::event_store::write_sample(aggregate_target, now as i64, latency) {
+            eprintln!("Hourly aggregate write failed: {err}");
+        }
+    });
 
     // Keep the global runtime lock only for the mutation/copy step. Sorting for
     // P95 and the rest of the statistics happens after the lock is released so
