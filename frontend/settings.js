@@ -271,6 +271,24 @@ function toggleIcmpWatch() {
   testIcmpComparison();
 }
 
+async function diagnoseCurrentRoute() {
+  updateActiveTargetFromForm();
+  const target = { ...activeTarget() };
+  const button = $('diagnoseRoute');
+  button.disabled = true;
+  try {
+    const result = await invoke('diagnose_route', { target });
+    const message = ['目的地址 ' + result.destination,
+      '接口 ' + (result.interface || '未知'),
+      '网关 ' + (result.gateway || '直连/未知'),
+      '路由标志 ' + (result.flags || '未知'), result.note].join(' · ');
+    $('testResult').textContent = message;
+    lastProbeReport = [(lastProbeReport || ''), '系统路由诊断：' + message].filter(Boolean).join('\n');
+    $('copyProbeReport').disabled = false;
+  } catch (error) { $('testResult').textContent = String(error); }
+  finally { button.disabled = false; }
+}
+
 async function testIcmpComparison() {
   updateActiveTargetFromForm();
   const target = { ...activeTarget() };
@@ -752,6 +770,7 @@ async function boot() {
 
   $('testTarget').addEventListener('click', testCurrentTarget);
   $('testIcmp').addEventListener('click', testIcmpComparison);
+  $('diagnoseRoute').addEventListener('click', diagnoseCurrentRoute);
   $('watchIcmp').addEventListener('click', toggleIcmpWatch);
   window.addEventListener('beforeunload', stopIcmpWatch);
   $('exportHistory').addEventListener('click', exportRecentHistory);
