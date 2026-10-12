@@ -48,6 +48,7 @@
         <div><span>失败率</span><strong id="failure">--</strong></div>
         <div><span>DNS</span><strong id="dns">--</strong></div>
       </div>
+      <div class="target-actions"><button id="exportHistory" class="secondary" type="button">导出最近 60 秒 CSV</button></div>
       <div class="chart-head">
         <div>
           <b id="chartTitle">最近 60 秒</b>
@@ -130,6 +131,7 @@
       </div>
       <div class="target-actions">
         <button id="testTarget" class="secondary">立即测试</button>
+        <button id="testIcmp" class="secondary" type="button">ICMP 对照</button>
         <button id="copyProbeReport" class="secondary" type="button" disabled aria-label="复制最近一次网络探测诊断报告">复制诊断报告</button>
         <span id="testResult" class="test-result" role="status" aria-live="polite">修改目标后可先测试，无需保存。检测到 utun 时会显示路径提示。</span>
       </div>
