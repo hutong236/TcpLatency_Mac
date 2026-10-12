@@ -176,7 +176,7 @@ pub(crate) async fn test_target(mut target: TargetConfig) -> Result<ProbeResult,
         return Err("探测协议必须是 tcp / ssh / http / https".into());
     }
     if !target.http_path.starts_with('/') || target.http_path.len() > 512 ||
-        target.http_path.chars().any(char::is_control) {
+        target.http_path.chars().any(|ch| ch.is_control() || ch.is_whitespace()) {
         return Err("HTTP 路径必须以 / 开头且不能包含控制字符".into());
     }
     if target.host.chars().any(|c| c.is_control() || c.is_whitespace()) ||
@@ -368,7 +368,7 @@ pub(crate) async fn diagnose_http_timing(target: TargetConfig) -> Result<HttpTim
         let tls_done = parse(2)?;
         let first = parse(3)?;
         let code: u16 = fields[4].parse().map_err(|_| "HTTP 状态码解析失败".to_string())?;
-        if connected < dns || first < connected ||
+        if code == 0 || connected <= 0.0 || first < connected || connected < dns ||
             (target.probe_mode == "https" && (tls_done < connected || first < tls_done)) {
             return Err("阶段时间戳顺序异常".into());
         }
