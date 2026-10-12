@@ -62,6 +62,10 @@
       </div>
     </section>
 
+    <section id="hourly" class="card" aria-labelledby="hourlyTitle">
+      <div class="section-title-row"><div><h2 id="hourlyTitle">长期延时统计</h2><p>SQLite 每小时聚合，记录真实探测的均值、最小值、最大值和成功率；最多保存 30 天。</p></div><div class="target-actions"><button id="refreshHourly" class="secondary" type="button">刷新统计</button><button id="exportHourly" class="secondary" type="button">导出 CSV</button></div></div>
+      <div class="target-table-wrap"><table class="target-table"><thead><tr><th>小时</th><th>样本</th><th>成功率</th><th>平均</th><th>最小</th><th>最大</th></tr></thead><tbody id="hourlyRows"><tr><td colspan="6">等待加载</td></tr></tbody></table></div>
+    </section>
     <section id="events" class="card" aria-labelledby="eventsTitle">
       <div class="section-title-row"><div><h2 id="eventsTitle">异常事件时间线</h2><p>状态变化记录保存在本机 SQLite，默认保留 30 天。</p></div><div class="target-actions"><button id="refreshEvents" type="button" class="secondary">刷新事件</button><button id="exportEvents" type="button" class="secondary">导出事件 CSV</button></div></div>
       <div class="target-table-wrap"><table class="target-table"><thead><tr><th>时间</th><th>目标</th><th>状态</th><th>说明</th></tr></thead><tbody id="incidentRows"><tr><td colspan="4">等待加载</td></tr></tbody></table></div>
