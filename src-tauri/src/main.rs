@@ -49,6 +49,7 @@ fn main() {
             commands::load_cat_asset,
             commands::save_cat_asset,
             commands::test_target,
+            commands::test_icmp,
             commands::save_config,
             commands::set_paused,
             commands::is_paused,
