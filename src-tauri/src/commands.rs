@@ -174,6 +174,63 @@ pub(crate) async fn test_target(mut target: TargetConfig) -> Result<ProbeResult,
     Ok(probe_target(&target).await)
 }
 
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct IcmpDiagnostic {
+    status: String,
+    latency_ms: Option<f64>,
+    detail: String,
+}
+
+/// Independent one-shot ICMP comparison. This is not TCP RTT, and firewalls
+/// may block ICMP even when the application endpoint is healthy.
+#[tauri::command]
+pub(crate) async fn test_icmp(target: TargetConfig) -> Result<IcmpDiagnostic, String> {
+    let host = target.host.trim();
+    if host.is_empty() || host.len() > 253 ||
+        host.starts_with('-') ||
+        host.chars().any(|c| !(c.is_ascii_alphanumeric() || matches!(c, '.' | ':' | '-' | '_'))) {
+        return Err("ICMP 目标必须是合法主机名或 IP 地址".into());
+    }
+    if !matches!(target.address_family.as_str(), "auto" | "ipv4" | "ipv6") {
+        return Err("地址族必须是 auto / ipv4 / ipv6".into());
+    }
+    #[cfg(target_os = "macos")]
+    {
+        let mut ping = tokio::process::Command::new("/sbin/ping");
+        if target.address_family == "ipv6" {
+            ping = tokio::process::Command::new("/sbin/ping6");
+        }
+        let output = tokio::time::timeout(
+            std::time::Duration::from_secs(4),
+            ping.args(["-n", "-c", "1", "-W", "2000", host])
+                .kill_on_drop(true).output(),
+        ).await;
+        match output {
+            Err(_) => Ok(IcmpDiagnostic { status: "timeout".into(), latency_ms: None, detail: "ICMP 命令超时；这不代表 TCP 不可达".into() }),
+            Ok(Err(err)) => Ok(IcmpDiagnostic { status: "unavailable".into(), latency_ms: None, detail: format!("无法执行 ICMP: {err}") }),
+            Ok(Ok(output)) => {
+                let stdout = String::from_utf8_lossy(&output.stdout);
+                let sample = stdout.lines().find_map(|line| {
+                    let part = line.split("time=").nth(1)?;
+                    part.split_whitespace().next()?.parse::<f64>().ok()
+                });
+                let status = if output.status.success() && sample.is_some() { "ok" } else { "blocked_or_failed" };
+                Ok(IcmpDiagnostic {
+                    status: status.into(), latency_ms: sample,
+                    detail: if status == "ok" { "收到 ICMP Echo Reply".into() }
+                        else { "未收到 ICMP Echo Reply；可能被防火墙过滤或目标不可达".into() },
+                })
+            }
+        }
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        Ok(IcmpDiagnostic { status: "unavailable".into(), latency_ms: None, detail: "ICMP 对照检测目前仅支持 macOS".into() })
+    }
+}
+
 #[tauri::command]
 pub(crate) fn save_config(
     app: AppHandle,
