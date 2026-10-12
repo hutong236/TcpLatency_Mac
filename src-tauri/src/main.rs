@@ -54,6 +54,7 @@ fn main() {
             commands::test_target,
             commands::test_icmp,
             commands::diagnose_route,
+            commands::diagnose_http_timing,
             commands::save_config,
             commands::set_paused,
             commands::is_paused,
