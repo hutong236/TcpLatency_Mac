@@ -219,10 +219,46 @@ async function refreshIncidentEvents() {
   } catch (err) { body.textContent = '事件读取失败：' + String(err); }
 }
 
+let icmpWatchTimer = null;
+let icmpWatchBusy = false;
+let icmpWatchTargetId = null;
+
+function stopIcmpWatch() {
+  if (icmpWatchTimer !== null) clearInterval(icmpWatchTimer);
+  icmpWatchTimer = null;
+  icmpWatchTargetId = null;
+  const button = $('watchIcmp');
+  if (button) {
+    button.textContent = '开启持续 ICMP 对照';
+    button.setAttribute('aria-pressed', 'false');
+  }
+}
+
+function toggleIcmpWatch() {
+  if (icmpWatchTimer !== null) {
+    stopIcmpWatch();
+    showMessage('持续 ICMP 对照已停止');
+    return;
+  }
+  updateActiveTargetFromForm();
+  icmpWatchTargetId = config?.activeTargetId;
+  const button = $('watchIcmp');
+  button.textContent = '停止持续 ICMP 对照';
+  button.setAttribute('aria-pressed', 'true');
+  // Diagnostic overlay only: does not change the background TCP health metric.
+  icmpWatchTimer = setInterval(() => {
+    if (document.hidden || icmpWatchBusy || config?.activeTargetId !== icmpWatchTargetId) return;
+    testIcmpComparison();
+  }, 5000);
+  testIcmpComparison();
+}
+
 async function testIcmpComparison() {
   updateActiveTargetFromForm();
   const target = { ...activeTarget() };
   if (!target) return;
+  if (icmpWatchBusy) return;
+  icmpWatchBusy = true;
   const button = $('testIcmp');
   button.disabled = true;
   const box = $('testResult');
@@ -236,7 +272,7 @@ async function testIcmpComparison() {
     lastProbeReport = (lastProbeReport || '') + '\n' + line;
     $('copyProbeReport').disabled = false;
   } catch (error) { box.textContent = String(error); }
-  finally { button.disabled = false; }
+  finally { button.disabled = false; icmpWatchBusy = false; }
 }
 
 function csvField(value) {
@@ -611,6 +647,7 @@ async function boot() {
 
   async function selectTarget(id) {
     if (!id || id === config.activeTargetId || switchingTarget) return;
+    stopIcmpWatch();
     switchingTarget = true;
     const oldId = config.activeTargetId;
     updateActiveTargetFromForm();
@@ -694,6 +731,8 @@ async function boot() {
 
   $('testTarget').addEventListener('click', testCurrentTarget);
   $('testIcmp').addEventListener('click', testIcmpComparison);
+  $('watchIcmp').addEventListener('click', toggleIcmpWatch);
+  window.addEventListener('beforeunload', stopIcmpWatch);
   $('exportHistory').addEventListener('click', exportRecentHistory);
   $('copyProbeReport').addEventListener('click', copyProbeReport);
 
