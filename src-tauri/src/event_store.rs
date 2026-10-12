@@ -29,7 +29,15 @@ fn connect() -> Result<Connection, String> {
         status TEXT NOT NULL,
         detail TEXT NOT NULL
     );
-    CREATE INDEX IF NOT EXISTS incidents_time_idx ON incidents(timestamp_ms DESC);")
+    CREATE INDEX IF NOT EXISTS incidents_time_idx ON incidents(timestamp_ms DESC);
+    CREATE TABLE IF NOT EXISTS hourly_aggregate (
+        target_id TEXT NOT NULL, hour_ms INTEGER NOT NULL,
+        sample_count INTEGER NOT NULL DEFAULT 0,
+        success_count INTEGER NOT NULL DEFAULT 0,
+        latency_sum REAL NOT NULL DEFAULT 0,
+        latency_min REAL, latency_max REAL,
+        PRIMARY KEY (target_id, hour_ms)
+    );")
         .map_err(|err| err.to_string())?;
     Ok(conn)
 }
@@ -61,4 +69,54 @@ pub(crate) fn recent_events(limit: u32) -> Result<Vec<IncidentEvent>, String> {
         status: row.get(3)?, detail: row.get(4)?,
     })).map_err(|err| err.to_string())?;
     rows.collect::<Result<Vec<_>, _>>().map_err(|err| err.to_string())
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct HourlyAggregate {
+    pub(crate) hour_ms: i64,
+    pub(crate) sample_count: i64,
+    pub(crate) success_count: i64,
+    pub(crate) average_ms: Option<f64>,
+    pub(crate) min_ms: Option<f64>,
+    pub(crate) max_ms: Option<f64>,
+}
+
+pub(crate) fn write_sample(target_id: String, timestamp_ms: i64, latency_ms: Option<f64>) -> Result<(), String> {
+    let conn = connect()?;
+    let hour = timestamp_ms.div_euclid(3_600_000) * 3_600_000;
+    conn.execute(
+        "INSERT INTO hourly_aggregate(target_id,hour_ms,sample_count,success_count,latency_sum,latency_min,latency_max)
+         VALUES (?1,?2,1,?3,?4,?5,?5)
+         ON CONFLICT(target_id,hour_ms) DO UPDATE SET
+           sample_count=sample_count+1,
+           success_count=success_count+excluded.success_count,
+           latency_sum=latency_sum+excluded.latency_sum,
+           latency_min=CASE WHEN excluded.latency_min IS NULL THEN latency_min
+             WHEN latency_min IS NULL THEN excluded.latency_min
+             ELSE MIN(latency_min,excluded.latency_min) END,
+           latency_max=CASE WHEN excluded.latency_max IS NULL THEN latency_max
+             WHEN latency_max IS NULL THEN excluded.latency_max
+             ELSE MAX(latency_max,excluded.latency_max) END",
+        params![target_id,hour,if latency_ms.is_some() {1} else {0},
+            latency_ms.unwrap_or(0.0),latency_ms],
+    ).map_err(|e| e.to_string())?;
+    conn.execute("DELETE FROM hourly_aggregate WHERE hour_ms < ?1",
+        [hour - 30 * 24 * 3_600_000]).map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+pub(crate) fn hourly_history(target_id: String, limit: u32) -> Result<Vec<HourlyAggregate>, String> {
+    let conn = connect()?;
+    let mut stmt = conn.prepare(
+        "SELECT hour_ms,sample_count,success_count,
+          CASE WHEN success_count > 0 THEN latency_sum / success_count ELSE NULL END,
+          latency_min,latency_max FROM hourly_aggregate
+          WHERE target_id=?1 ORDER BY hour_ms DESC LIMIT ?2"
+    ).map_err(|e| e.to_string())?;
+    let rows = stmt.query_map(params![target_id,limit.clamp(1,720)], |r| Ok(HourlyAggregate {
+        hour_ms:r.get(0)?,sample_count:r.get(1)?,success_count:r.get(2)?,
+        average_ms:r.get(3)?,min_ms:r.get(4)?,max_ms:r.get(5)?,
+    })).map_err(|e| e.to_string())?;
+    rows.collect::<Result<Vec<_>,_>>().map_err(|e| e.to_string())
 }
