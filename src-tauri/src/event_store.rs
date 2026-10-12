@@ -48,6 +48,12 @@ pub(crate) fn write_event(event: IncidentEvent) -> Result<(), String> {
 
 pub(crate) fn recent_events(limit: u32) -> Result<Vec<IncidentEvent>, String> {
     let conn = connect()?;
+    let cutoff = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default().as_millis().min(i64::MAX as u128) as i64
+        - 30 * 24 * 60 * 60 * 1000;
+    conn.execute("DELETE FROM incidents WHERE timestamp_ms < ?1", [cutoff])
+        .map_err(|err| err.to_string())?;
     let mut stmt = conn.prepare("SELECT timestamp_ms,target_id,target_name,status,detail
         FROM incidents ORDER BY timestamp_ms DESC LIMIT ?1").map_err(|err| err.to_string())?;
     let rows = stmt.query_map([limit.clamp(1, 500)], |row| Ok(IncidentEvent {
