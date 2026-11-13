@@ -530,12 +530,10 @@ function renderTargetRows() {
       <td><span class="target-name"><button type="button" class="target-select" data-select-target="${escapeHtml(target.id)}" aria-label="设为主目标：${escapeHtml(target.name)}" aria-pressed="${target.id === config.activeTargetId}"><i class="target-dot ${cls}" aria-hidden="true"></i>${escapeHtml(target.name)}</button></span></td>
       <td>${escapeHtml(target.host)}:${target.port} <small>· ${escapeHtml((target.probeMode || 'tcp').toUpperCase())}</small></td>
       <td>${escapeHtml(current)}</td>
-      <td>${escapeHtml(fmt(s.averageMs))}</td>
-      <td>${Math.round((s.failurePercent || 0) * 10) / 10}%</td>
       <td><span class="status-chip ${cls}">${escapeHtml(status)}</span></td>
     </tr>`;
   }).join('');
-  $('targetRows').innerHTML = rows || '<tr><td colspan="6">暂无目标</td></tr>';
+  $('targetRows').innerHTML = rows || '<tr><td colspan="4">暂无目标</td></tr>';
 
   // Event delegation avoids rebuilding one listener for every target on each sample.
 
@@ -698,32 +696,37 @@ async function loadSnapshots() {
 }
 
 function setupSectionNavigation() {
-  const links = [...document.querySelectorAll('.section-nav a[href^="#"]')];
-  const setActive = id => {
-    for (const link of links) {
-      const active = link.getAttribute('href') === `#${id}`;
-      link.classList.toggle('is-active', active);
-      if (active) link.setAttribute('aria-current', 'location');
-      else link.removeAttribute('aria-current');
+  const tabs = [...document.querySelectorAll('.section-nav [role="tab"]')];
+  const panels = [...document.querySelectorAll('.view-panel[role="tabpanel"]')];
+  const activate = (id, focus = false) => {
+    if (!panels.some(panel => panel.id === id)) return;
+    for (const panel of panels) panel.hidden = panel.id !== id;
+    for (const tab of tabs) {
+      const selected = tab.dataset.view === id;
+      tab.classList.toggle('is-active', selected);
+      tab.setAttribute('aria-selected', String(selected));
+      tab.tabIndex = selected ? 0 : -1;
+      if (selected && focus) tab.focus();
     }
+    if (id === 'monitor') queueChart(true);
+    window.scrollTo({ top: 0, behavior: 'instant' });
   };
-  for (const link of links) {
-    link.addEventListener('click', () => setActive(link.hash.slice(1)));
+  for (const tab of tabs) {
+    tab.addEventListener('click', () => activate(tab.dataset.view));
+    tab.addEventListener('keydown', event => {
+      if (!['ArrowRight', 'ArrowLeft', 'Home', 'End'].includes(event.key)) return;
+      event.preventDefault();
+      const index = tabs.indexOf(tab);
+      const next = event.key === 'Home' ? 0 : event.key === 'End' ? tabs.length - 1
+        : (index + (event.key === 'ArrowRight' ? 1 : -1) + tabs.length) % tabs.length;
+      activate(tabs[next].dataset.view, true);
+    });
   }
-  if (!('IntersectionObserver' in window)) {
-    if (links.length) setActive(links[0].hash.slice(1));
-    return;
+  for (const trigger of document.querySelectorAll('[data-open-view]')) {
+    trigger.addEventListener('click', () => activate(trigger.dataset.openView, true));
   }
-  const observer = new IntersectionObserver(entries => {
-    const visible = entries.filter(entry => entry.isIntersecting)
-      .sort((a, b) => a.boundingClientRect.top - b.boundingClientRect.top);
-    if (visible[0]) setActive(visible[0].target.id);
-  }, { rootMargin: '-85px 0px -65% 0px', threshold: 0 });
-  for (const link of links) {
-    const section = document.getElementById(link.hash.slice(1));
-    if (section) observer.observe(section);
-  }
-  if (links.length) setActive(links[0].hash.slice(1));
+  const initial = location.hash.replace('#', '');
+  activate(panels.some(panel => panel.id === initial) ? initial : 'monitor');
 }
 
 async function boot() {
