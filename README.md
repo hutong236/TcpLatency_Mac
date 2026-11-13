@@ -1,3 +1,9 @@
+## v0.16.0 — Focused Monitoring UI
+
+The settings window now separates **实时监测**, **目标管理**, and **偏好设置** into three keyboard-accessible views. The live overview prioritizes current latency, mean latency, P95, failure rate, and a 60-second history chart; TCP, DNS, jitter, minimum, and maximum metrics remain available under **更多指标**. Diagnostic actions, long-term hourly history, event history, per-target advanced probe controls, appearance options, notifications, battery policies, and thresholds are preserved behind collapsible details.
+
+The monitoring semantics are unchanged: TCP handshake latency is not ICMP ping latency, SSH validates identification rather than authentication, and HTTP(S) verifies response headers/2xx (plus TLS for HTTPS). No configuration migration is required. The Universal macOS app is published with ad-hoc signing; it is not Apple-notarized.
+
 
 ## P0–P2 网络诊断与历史存储（开发分支）
 
