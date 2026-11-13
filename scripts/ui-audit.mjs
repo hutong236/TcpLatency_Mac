@@ -14,9 +14,10 @@ const idMatches = [...html.matchAll(/\bid="([^"]+)"/g)].map(match => match[1]);
 const ids = new Set(idMatches);
 assert.equal(ids.size, idMatches.length, 'HTML IDs must remain unique');
 
-for (const link of html.matchAll(/href="#([^"]+)"/g)) {
-  assert.ok(ids.has(link[1]), `Navigation destination #${link[1]} is missing`);
+for (const tab of html.matchAll(/role="tab"[^>]*aria-controls="([^"]+)"/g)) {
+  assert.ok(ids.has(tab[1]), `Navigation destination #${tab[1]} is missing`);
 }
+assert.equal((html.match(/role="tab"/g) || []).length, 3, 'Use three top-level views');
 for (const match of settings.matchAll(/\$\('([a-zA-Z][\w-]*)'\)/g)) {
   assert.ok(ids.has(match[1]), `Settings control #${match[1]} is missing`);
 }
@@ -32,6 +33,13 @@ for (const id of [
 }
 
 assert.match(html, /<nav class="section-nav" aria-label=/, 'Named section navigation required');
+assert.match(html, /id="monitor" class="view-panel"/, 'Monitor view required');
+assert.match(html, /id="targets-view" class="view-panel"/, 'Target management view required');
+assert.match(html, /id="preferences" class="view-panel"/, 'Preferences view required');
+assert.match(html, /<details[^>]+id="historyRecords"/, 'History must use progressive disclosure');
+assert.match(html, /<details[^>]+id="targetAdvanced"/, 'Target advanced options must be collapsible');
+assert.match(html, /<details[^>]+id="diagnosticTools"/, 'Diagnostics must be collapsible');
+assert.match(settings, /activate\(tabs\[next\]\.dataset\.view, true\)/, 'Keyboard tab navigation required');
 assert.match(html, /id="message" role="status" aria-live="polite"/, 'Save feedback must be announced');
 assert.match(html, /id="historyChart" role="img" aria-label=/, 'Chart requires an accessible name');
 assert.match(settings, /class="target-select"[^>]*aria-label=/, 'Target selector requires a button label');

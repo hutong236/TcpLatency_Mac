@@ -14,41 +14,42 @@
           <svg viewBox="0 0 32 32" fill="none"><path d="M3 21h5l4-13 6 18 4-10h7" stroke="currentColor" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round"/><circle cx="28" cy="16" r="2" fill="currentColor"/></svg>
         </div>
         <div>
-          <div class="eyebrow">TCP LATENCY · NETWORK OBSERVATORY</div>
-        <h1>网络延迟监测</h1>
-        <p>多协议分层验证 · 网络性能与服务可用性</p>
+          <div class="eyebrow">TCP LATENCY</div>
+        <h1>网络监测</h1>
+        <p>把重要信息留在眼前</p>
         </div>
       </div>
       <div id="liveBadge" class="live-badge" role="status" aria-live="off" aria-label="当前网络延时">--</div>
     </header>
 
-    <nav class="section-nav" aria-label="设置分区">
-      <a href="#overview">实时概览</a>
-      <a href="#targets">全部目标</a>
-      <a href="#target-config">目标配置</a>
-      <a href="#hud-config">悬浮显示</a>
-      <a href="#battery-config">省电</a>
-      <a href="#alerts-config">通知</a>
-      <a href="#threshold-config">阈值</a>
+    <nav class="section-nav" aria-label="页面导航" role="tablist">
+      <button id="tab-monitor" class="nav-tab is-active" role="tab" aria-selected="true" aria-controls="monitor" data-view="monitor" type="button">实时监测</button>
+      <button id="tab-targets" class="nav-tab" role="tab" aria-selected="false" aria-controls="targets-view" data-view="targets-view" tabindex="-1" type="button">目标管理</button>
+      <button id="tab-preferences" class="nav-tab" role="tab" aria-selected="false" aria-controls="preferences" data-view="preferences" tabindex="-1" type="button">偏好设置</button>
     </nav>
 
+    <div id="monitor" class="view-panel" role="tabpanel" aria-labelledby="tab-monitor">
     <section id="overview" class="card summary-card" aria-labelledby="overviewTitle">
       <div class="summary-header">
-        <h2 id="overviewTitle">实时网络概览</h2>
-        <span class="summary-kicker">LIVE / LAST 60 SECONDS</span>
+        <h2 id="overviewTitle">实时监测</h2>
+        <span class="summary-kicker">最近 60 秒 · 实时</span>
       </div>
-      <div class="summary">
-        <div><span>当前</span><strong id="current">--</strong></div>
-        <div><span>TCP 建连</span><strong id="tcp">--</strong></div>
-        <div><span>平均</span><strong id="avg">--</strong></div>
-        <div><span>最小</span><strong id="min">--</strong></div>
-        <div><span>最大</span><strong id="max">--</strong></div>
+      <div class="summary summary-primary">
+        <div class="metric-current"><span>当前延时</span><strong id="current">--</strong></div>
+        <div><span>平均延时</span><strong id="avg">--</strong></div>
         <div><span>P95</span><strong id="p95">--</strong></div>
-        <div><span>抖动</span><strong id="jitter">--</strong></div>
         <div><span>失败率</span><strong id="failure">--</strong></div>
-        <div><span>DNS</span><strong id="dns">--</strong></div>
       </div>
-      <div class="target-actions"><button id="exportHistory" class="secondary" type="button">导出最近 60 秒 CSV</button></div>
+      <details class="disclosure metric-disclosure" id="moreMetrics">
+        <summary>更多指标 <span>TCP · 最小 / 最大 · 抖动 · DNS</span></summary>
+        <div class="summary summary-secondary">
+          <div><span>TCP 建连</span><strong id="tcp">--</strong></div>
+          <div><span>最小</span><strong id="min">--</strong></div>
+          <div><span>最大</span><strong id="max">--</strong></div>
+          <div><span>抖动</span><strong id="jitter">--</strong></div>
+          <div><span>DNS</span><strong id="dns">--</strong></div>
+        </div>
+      </details>
       <div class="chart-head">
         <div>
           <b id="chartTitle">最近 60 秒</b>
@@ -60,8 +61,32 @@
         <canvas id="historyChart" role="img" aria-label="最近 60 秒协议验证耗时趋势图"></canvas>
         <div id="chartEmpty" class="chart-empty" aria-hidden="true">等待采样数据…</div>
       </div>
+      <div class="chart-footer"><span>探测耗时不等于 ICMP Ping RTT</span><button id="exportHistory" class="text-button" type="button">导出 60 秒数据</button></div>
     </section>
 
+    <section id="targets" class="card" aria-labelledby="targetsTitle">
+      <div class="section-title-row">
+        <div>
+          <h2 id="targetsTitle">监测目标</h2>
+          <p>点击目标可切换菜单栏与悬浮窗的主监测对象。</p>
+        </div>
+        <div class="target-heading-actions"><span id="targetCount" class="count-pill">0 个目标</span><button class="secondary" type="button" data-open-view="targets-view">管理目标</button></div>
+      </div>
+      <div class="target-table-wrap">
+        <table class="target-table">
+          <caption class="sr-only">所有已配置的网络监测目标及实时状态</caption>
+          <thead>
+            <tr><th>目标</th><th>地址 / 协议</th><th>当前</th><th>状态</th></tr>
+          </thead>
+          <tbody id="targetRows"></tbody>
+        </table>
+      </div>
+      <p class="hint">主目标切换后立即生效；编辑地址或探测选项请前往「目标管理」。</p>
+    </section>
+
+      <details class="disclosure history-disclosure" id="historyRecords">
+        <summary>历史与异常记录<span>查看每小时统计、状态事件及导出</span></summary>
+        <div class="history-content">
     <section id="hourly" class="card" aria-labelledby="hourlyTitle">
       <div class="section-title-row"><div><h2 id="hourlyTitle">长期延时统计</h2><p>SQLite 每小时聚合，记录真实探测的均值、最小值、最大值和成功率；最多保存 30 天。</p></div><div class="target-actions"><button id="refreshHourly" class="secondary" type="button">刷新统计</button><button id="exportHourly" class="secondary" type="button">导出 CSV</button></div></div>
       <div class="target-table-wrap"><table class="target-table"><thead><tr><th>小时</th><th>样本</th><th>成功率</th><th>平均</th><th>最小</th><th>最大</th></tr></thead><tbody id="hourlyRows"><tr><td colspan="6">等待加载</td></tr></tbody></table></div>
@@ -70,92 +95,79 @@
       <div class="section-title-row"><div><h2 id="eventsTitle">异常事件时间线</h2><p>状态变化记录保存在本机 SQLite，默认保留 30 天。</p></div><div class="target-actions"><button id="refreshEvents" type="button" class="secondary">刷新事件</button><button id="exportEvents" type="button" class="secondary">导出事件 CSV</button></div></div>
       <div class="target-table-wrap"><table class="target-table"><thead><tr><th>时间</th><th>目标</th><th>状态</th><th>说明</th></tr></thead><tbody id="incidentRows"><tr><td colspan="4">等待加载</td></tr></tbody></table></div>
     </section>
-    <section id="targets" class="card" aria-labelledby="targetsTitle">
-      <div class="section-title-row">
-        <div>
-          <h2 id="targetsTitle">全部目标状态</h2>
-          <p>所有启用目标独立并行探测，单个目标超时不会阻塞其他目标。</p>
         </div>
-        <span id="targetCount" class="count-pill">0 个目标</span>
-      </div>
-      <div class="target-table-wrap">
-        <table class="target-table">
-          <caption class="sr-only">所有已配置的网络监测目标及实时状态</caption>
-          <thead>
-            <tr>
-              <th>目标</th>
-              <th>地址</th>
-              <th>当前</th>
-              <th>平均</th>
-              <th>失败率</th>
-              <th>状态</th>
-            </tr>
-          </thead>
-          <tbody id="targetRows"></tbody>
-        </table>
-      </div>
-      <p class="hint">点击某一行可将其设为菜单栏和悬浮窗的主目标。</p>
-    </section>
+      </details>
+    </div>
 
+    <div id="targets-view" class="view-panel" role="tabpanel" aria-labelledby="tab-targets" hidden>
     <section id="target-config" class="card" aria-labelledby="targetConfigTitle">
       <div class="section-title-row">
         <div>
-          <h2 id="targetConfigTitle">监测目标</h2>
-          <p>支持分层可用性验证：TCP 仅代表握手成功；SSH 验证协议标识；HTTP(S) 验证 2xx 响应头。HTTPS 同时验证 TLS 证书。</p>
+          <h2 id="targetConfigTitle">目标管理</h2>
+          <p>设置监测地址并选择验证层级。TCP 仅验证连接，不代表业务健康。</p>
         </div>
         <button id="addTarget" class="secondary">+ 新增目标</button>
       </div>
 
-      <label>主目标
+      <label>选择主目标并编辑
         <select id="activeTarget"></select>
       </label>
 
       <div class="grid two">
-        <label>名称<input id="name" /></label>
-        <label>Host / IP<input id="host" placeholder="1.1.1.1" /></label>
-        <label>服务端口<input id="port" type="number" min="1" max="65535" /></label>
-        <label>检测间隔 (ms)<input id="intervalMs" type="number" min="200" max="60000" step="100" /></label>
-        <label>连接超时 (ms)<input id="timeoutMs" type="number" min="100" max="30000" step="100" /></label>
-        <label>探测协议
+        <label>目标名称<input id="name" /></label>
+        <label>Host / IP<input id="host" placeholder="1.1.1.1" spellcheck="false" /></label>
+        <label>端口<input id="port" type="number" min="1" max="65535" /></label>
+        <label>验证方式
           <select id="probeMode">
-            <option value="tcp">TCP · 仅建连（不代表业务可用）</option>
-            <option value="ssh">SSH · 验证 SSH-2.0 协议标识</option>
-            <option value="http">HTTP · 验证 2xx 响应头</option>
-            <option value="https">HTTPS · 验证 TLS 及 2xx 响应头</option>
+            <option value="tcp">TCP · 连接</option>
+            <option value="ssh">SSH · 协议标识</option>
+            <option value="http">HTTP · 2xx 响应</option>
+            <option value="https">HTTPS · TLS + 2xx 响应</option>
           </select>
         </label>
         <label id="httpPathRow">HTTP(S) 请求路径
           <input id="httpPath" placeholder="/health" maxlength="512" spellcheck="false" />
-          <small>默认 /；推荐服务健康检查端点。只接受 2xx，禁用重定向。</small>
+          <small>默认 /，不跟随重定向；建议使用健康检查路径。</small>
         </label>
-        <label>地址族
-          <select id="addressFamily">
-            <option value="auto">Auto（TCP 优先 IPv4，HTTP(S) 由系统选择）</option>
-            <option value="ipv4">仅 IPv4</option>
-            <option value="ipv6">仅 IPv6</option>
-          </select>
-        </label>
-        <label class="inline-check"><input id="targetEnabled" type="checkbox" /><span>启用该目标并行监测</span></label>
       </div>
-      <div class="target-actions">
-        <button id="testTarget" class="secondary">立即测试</button>
-        <button id="testIcmp" class="secondary" type="button">ICMP 对照</button>
-        <button id="diagnoseHttpTiming" class="secondary" type="button">HTTP 分阶段计时</button>
-        <button id="diagnoseRoute" class="secondary" type="button">检查系统路由</button>
-        <button id="watchIcmp" class="secondary" type="button" aria-pressed="false">开启持续 ICMP 对照</button>
-        <button id="copyProbeReport" class="secondary" type="button" disabled aria-label="复制最近一次网络探测诊断报告">复制诊断报告</button>
-        <span id="testResult" class="test-result" role="status" aria-live="polite">修改目标后可先测试，无需保存。检测到 utun 时会显示路径提示。</span>
+      <details id="targetAdvanced" class="disclosure settings-disclosure">
+        <summary>高级探测设置<span>检测频率 · 超时 · IPv4 / IPv6</span></summary>
+        <div class="grid two">
+          <label>检测间隔 (ms)<input id="intervalMs" type="number" min="200" max="60000" step="100" /></label>
+          <label>连接超时 (ms)<input id="timeoutMs" type="number" min="100" max="30000" step="100" /></label>
+          <label>地址族
+            <select id="addressFamily">
+              <option value="auto">自动选择</option>
+              <option value="ipv4">仅 IPv4</option>
+              <option value="ipv6">仅 IPv6</option>
+            </select>
+          </label>
+          <label class="inline-check"><input id="targetEnabled" type="checkbox" /><span>启用此目标</span></label>
+        </div>
+      </details>
+      <div class="target-actions primary-actions">
+        <button id="testTarget" class="secondary" type="button">立即测试</button>
+        <span id="testResult" class="test-result" role="status" aria-live="polite">修改目标后可直接测试；保存后才应用为持续监测配置。</span>
       </div>
+      <details id="diagnosticTools" class="disclosure settings-disclosure">
+        <summary>诊断工具<span>ICMP · 系统路由 · HTTP 阶段耗时</span></summary>
+        <div class="target-actions">
+          <button id="testIcmp" class="secondary" type="button">ICMP 对照</button>
+          <button id="diagnoseRoute" class="secondary" type="button">检查路由</button>
+          <button id="diagnoseHttpTiming" class="secondary" type="button">HTTP 阶段计时</button>
+          <button id="watchIcmp" class="secondary" type="button" aria-pressed="false">持续 ICMP 对照</button>
+          <button id="copyProbeReport" class="secondary" type="button" disabled aria-label="复制最近一次网络探测诊断报告">复制诊断报告</button>
+        </div>
+        <p class="hint">ICMP 是独立对照，不参与主监测统计；HTTP 阶段计时由单独的诊断请求完成。</p>
+      </details>
       <button id="deleteTarget" class="danger ghost">删除当前目标</button>
     </section>
+    </div>
 
+    <div id="preferences" class="view-panel" role="tabpanel" aria-labelledby="tab-preferences" hidden>
     <section id="hud-config" class="card" aria-labelledby="hudConfigTitle">
-      <h2 id="hudConfigTitle">悬浮窗与启动</h2>
+      <h2 id="hudConfigTitle">悬浮窗与运行</h2>
       <label class="toggle-row"><span><b>桌面悬浮延迟</b><small>始终置顶显示当前主目标实时数字</small></span><input id="showFloating" type="checkbox" /></label>
-      <label class="toggle-row"><span><b>鼠标穿透</b><small>锁定悬浮窗后不拦截浏览器、终端等应用的鼠标操作；可从菜单栏解除</small></span><input id="mousePassthrough" type="checkbox" /></label>
-      <label class="toggle-row"><span><b>显示目标名称</b><small>第二行显示当前主目标；长名称自动省略，不改变窗体宽度</small></span><input id="floatingShowTarget" type="checkbox" /></label>
-      <label class="toggle-row"><span><b>状态点</b><small>右上角使用很小的系统状态色提示，卡片背景始终保持中性</small></span><input id="floatingShowStatusDot" type="checkbox" /></label>
-      <label class="toggle-row"><span><b>延迟趋势箭头</b><small>可选显示 ↑ / ↓；默认关闭以保持 Apple 风格的极简视觉</small></span><input id="floatingShowTrend" type="checkbox" /></label>
       <label class="toggle-row" id="trafficToggleRow">
         <span><b>显示网络流量</b><small>在延时数字下方显示实时下载与上传速度</small></span>
         <input id="floatingShowTraffic" type="checkbox" />
@@ -164,7 +176,16 @@
         <input id="trafficInterface" placeholder="auto / en0 / utun3" spellcheck="false" autocomplete="off" />
         <small>推荐 auto：自动选择当前默认路由接口，避免重复统计。</small>
       </label>
-      <div id="networkCatSettings" class="cat-settings-block">
+
+      <details class="disclosure settings-disclosure" id="appearanceOptions">
+        <summary>高级显示选项<span>外观 · 尺寸 · 状态标识</span></summary>
+      <label class="toggle-row"><span><b>鼠标穿透</b><small>锁定悬浮窗后不拦截浏览器、终端等应用的鼠标操作；可从菜单栏解除</small></span><input id="mousePassthrough" type="checkbox" /></label>
+      <label class="toggle-row"><span><b>显示目标名称</b><small>第二行显示当前主目标；长名称自动省略，不改变窗体宽度</small></span><input id="floatingShowTarget" type="checkbox" /></label>
+      <label class="toggle-row"><span><b>状态点</b><small>右上角使用很小的系统状态色提示，卡片背景始终保持中性</small></span><input id="floatingShowStatusDot" type="checkbox" /></label>
+      <label class="toggle-row"><span><b>延迟趋势箭头</b><small>可选显示 ↑ / ↓；默认关闭以保持 Apple 风格的极简视觉</small></span><input id="floatingShowTrend" type="checkbox" /></label>
+      <details class="disclosure nested-disclosure" id="catOptions">
+        <summary>网络猫装饰<span>可选动画和自定义素材</span></summary>
+        <div id="networkCatSettings" class="cat-settings-block">
         <label class="toggle-row">
           <span><b>显示网络猫</b><small>在延迟数字旁显示网络健康状态；关闭后不占用空间</small></span>
           <input id="networkCatEnabled" type="checkbox" />
@@ -195,6 +216,7 @@
           <span id="catAssetResult" class="test-result" role="status" aria-live="polite">网络猫会综合延时、抖动、失败率和实时流量判断状态。</span>
         </div>
       </div>
+      </details>
       <div class="grid two compact-grid">
         <label>背景样式
           <select id="floatingBackgroundMode">
@@ -214,22 +236,19 @@
         <label>延迟字体大小<input id="floatingFontSize" type="range" min="30" max="52" step="1" /><span id="floatingFontSizeValue" class="range-value">42px</span></label>
       </div>
       <p class="hint">毛玻璃使用 macOS 原生 UnderWindowBackground；纯透明会同时关闭原生磨砂与 CSS 卡片层，仅保留小猫、延时、流量和目标文字；实体背景用于复杂桌面下提高可读性。</p>
+      </details>
       <label class="toggle-row"><span><b>登录时自动启动</b><small>使用 macOS LaunchAgent</small></span><input id="autostart" type="checkbox" /></label>
       <label class="toggle-row"><span><b>暂停全部检测</b><small>保留程序运行，但停止所有目标的 TCP 探测</small></span><input id="paused" type="checkbox" /></label>
     </section>
-
-    <section id="battery-config" class="card">
-      <h2>电池与省电</h2>
+    <details id="battery-config" class="disclosure settings-disclosure"><summary>省电策略<span>低电量自动暂停</span></summary><div class="settings-disclosure-body">
       <label class="toggle-row"><span><b>使用电池供电时自动暂停</b><small>拔掉电源适配器后停止全部探测与流量采样，插回电源自动恢复</small></span><input id="batteryPauseOnBattery" type="checkbox" /></label>
       <label class="toggle-row"><span><b>电量低于阈值时自动暂停</b><small>触发后电量需回升到阈值 +5% 以上才恢复，避免临界电量反复启停</small></span><input id="batteryPauseLowEnabled" type="checkbox" /></label>
       <div class="grid two">
         <label>电量阈值 (%)<input id="batteryLowThreshold" type="number" min="5" max="50" step="1" /></label>
       </div>
       <p id="batteryStatus" class="hint">正在读取电池状态…</p>
-    </section>
-
-    <section id="alerts-config" class="card">
-      <h2>异常通知</h2>
+    </div></details>
+    <details id="alerts-config" class="disclosure settings-disclosure"><summary>异常通知<span>通知与恢复策略</span></summary><div class="settings-disclosure-body">
       <label class="toggle-row"><span><b>macOS 系统通知</b><small>高延迟或连续失败达到条件时通知</small></span><input id="notificationsEnabled" type="checkbox" /></label>
       <label class="toggle-row"><span><b>恢复通知</b><small>异常目标恢复可达或延迟回落后发送一次恢复消息</small></span><input id="notifyRecovery" type="checkbox" /></label>
       <div class="grid three">
@@ -238,16 +257,15 @@
         <label>通知冷却 (秒)<input id="notificationCooldown" type="number" min="10" max="86400" /></label>
       </div>
       <p class="hint">高延迟判断使用下方 High 阈值。冷却时间用于防止持续异常时反复弹窗。</p>
-    </section>
-
-    <section id="threshold-config" class="card">
-      <h2>延迟阈值</h2>
+    </div></details>
+    <details id="threshold-config" class="disclosure settings-disclosure"><summary>延迟阈值<span>警告 · 高延迟 · 严重</span></summary><div class="settings-disclosure-body">
       <div class="grid three">
         <label>Warning (ms)<input id="warningMs" type="number" min="1" /></label>
         <label>High (ms)<input id="highMs" type="number" min="2" /></label>
         <label>Critical (ms)<input id="criticalMs" type="number" min="3" /></label>
       </div>
-    </section>
+    </div></details>
+    </div>
 
     <footer class="footer-actions">
       <span id="message" role="status" aria-live="polite" aria-atomic="true">所有更改均保存在本机</span>

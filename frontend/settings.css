@@ -273,3 +273,115 @@ button:disabled { opacity: .52; cursor: not-allowed; }
 
 /* Conditional protocol fields must stay hidden inside responsive grids. */
 [hidden] { display: none !important; }
+
+/* Focused settings shell — three navigable views and progressive disclosure. */
+.app-shell { width: min(100%, 880px); padding-top: 30px; }
+.app-header { margin-bottom: 21px; }
+.brand-icon { width: 46px; height: 46px; border-radius: 14px; box-shadow: none; }
+.eyebrow { letter-spacing: .11em; font-weight: 750; }
+.app-header p { margin-top: 4px; }
+.section-nav {
+  position: relative; top: auto; width: fit-content; max-width: 100%;
+  gap: 3px; margin-bottom: 24px; padding: 4px;
+  border-radius: 12px; box-shadow: none; backdrop-filter: none;
+}
+.section-nav .nav-tab {
+  flex: 0 0 auto; min-height: 36px; padding: 8px 18px;
+  border-radius: 9px; border: 0; background: transparent;
+  color: var(--muted); font-size: 12px; font-weight: 670; box-shadow: none;
+}
+.section-nav .nav-tab:hover { color: var(--text); background: var(--row-hover); }
+.section-nav .nav-tab.is-active {
+  color: var(--text); background: var(--field);
+  box-shadow: 0 1px 4px rgba(18, 36, 60, .09);
+}
+.view-panel[hidden] { display: none !important; }
+.view-panel > .card:first-child { margin-top: 0; }
+.card { margin: 14px 0; padding: 23px; box-shadow: 0 3px 18px rgba(16,38,69,.035); border-radius: 18px; }
+.summary-card { box-shadow: 0 17px 34px rgba(16,36,62,.13); }
+.summary-header { margin-bottom: 17px; }
+.summary-primary { grid-template-columns: 1.6fr repeat(3, 1fr); gap: 9px; }
+.summary-primary > div:first-child { grid-column: auto; }
+.summary-primary > div { padding: 14px; }
+.summary-primary > .metric-current { background: rgba(98,161,255,.14); border-color: rgba(125,182,255,.23); }
+.summary-primary > .metric-current strong { font-size: clamp(27px,4.2vw,40px); line-height: 1.12; }
+.summary-primary strong { font-size: 19px; }
+.summary-secondary { grid-template-columns: repeat(5,minmax(0,1fr)); gap: 8px; margin: 14px 0 4px; }
+.summary-secondary > div:first-child { grid-column: auto; background: rgba(255,255,255,.035); border-color: rgba(204,224,255,.095); }
+.summary-secondary > div:first-child strong { font-size: 17px; }
+.summary-secondary strong { font-size: 17px; }
+.disclosure { display: block; border: 1px solid var(--border); background: var(--card); border-radius: 15px; margin: 14px 0; overflow: hidden; }
+.disclosure > summary {
+  position: relative; cursor: pointer; list-style: none;
+  display: flex; flex-direction: column; gap: 3px;
+  padding: 17px 20px; color: var(--text); font-weight: 700;
+  font-size: 13px; outline-offset: -3px;
+}
+.disclosure > summary::-webkit-details-marker { display: none; }
+.disclosure > summary::after {
+  content: ""; width: 7px; height: 7px; position: absolute;
+  right: 21px; top: calc(50% - 5px);
+  border-right: 1.7px solid var(--muted); border-bottom: 1.7px solid var(--muted);
+  transform: rotate(45deg); transition: transform .16s ease;
+}
+.disclosure[open] > summary::after { transform: rotate(225deg) translate(-2px,-2px); }
+.disclosure > summary:hover { background: var(--row-hover); }
+.disclosure > summary span { font-size: 11px; font-weight: 450; color: var(--muted); padding-right: 18px; }
+.disclosure > summary:focus-visible { outline: 2px solid var(--accent); }
+.settings-disclosure-body { padding: 0 20px 20px; }
+.settings-disclosure > .toggle-row,
+.settings-disclosure > .grid,
+.settings-disclosure > .hint,
+.settings-disclosure > .target-actions { margin-left: 20px; margin-right: 20px; }
+.settings-disclosure > .grid { margin-bottom: 20px; }
+.settings-disclosure > .hint { margin-bottom: 19px; }
+.settings-disclosure > .target-actions { margin-bottom: 20px; }
+.metric-disclosure { background: transparent; border: 1px solid rgba(204,224,255,.12); margin: 12px 0 0; }
+.metric-disclosure > summary { color: #eff6ff; font-size: 11px; padding: 10px 13px; }
+.metric-disclosure > summary span { color: #a8bbd2; }
+.metric-disclosure > summary:hover { background: rgba(255,255,255,.06); }
+.metric-disclosure > summary::after { border-color: #a8bbd2; }
+.metric-disclosure .summary-secondary { padding: 0 12px 11px; }
+.chart-head { margin-top: 23px; }
+.chart-wrap { height: 196px; }
+.chart-footer { display: flex; justify-content: space-between; gap: 10px; align-items: center; margin-top: 9px; color: #a8bbd2; font-size: 11px; }
+.text-button { background: transparent; border: 0; min-height: 30px; padding: 5px 8px; color: #bedbff; font-size: 11px; }
+.text-button:hover { background: rgba(255,255,255,.08); }
+.target-heading-actions { display: flex; align-items: center; gap: 9px; }
+.target-table th, .target-table td { padding: 12px 14px; }
+#targets .target-table { min-width: 480px; }
+#targets .target-table tbody tr { cursor: pointer; }
+.history-disclosure { margin-top: 14px; }
+.history-content { padding: 0 17px 17px; }
+.history-content .card { margin: 11px 0; box-shadow: none; padding: 18px; }
+.history-content .card h2 { font-size: 14px; }
+.history-content .card p { display: none; }
+#targets-view .card, #preferences .card { box-shadow: none; }
+#target-config .grid.two { margin-top: 13px; }
+#target-config .primary-actions { margin-bottom: 12px; }
+.nested-disclosure { margin: 0 20px 14px; background: var(--field); }
+.nested-disclosure .cat-settings-block { border: 0; border-radius: 0; margin: 0; padding: 0 16px 15px; }
+#appearanceOptions > .toggle-row { margin-left: 20px; margin-right: 20px; }
+.footer-actions { margin-top: 19px; bottom: 10px; box-shadow: 0 5px 20px rgba(13,35,63,.09); }
+@media (max-width: 760px) {
+  .app-shell { padding: 20px 17px 27px; }
+  .section-nav { width: 100%; }
+  .section-nav .nav-tab { flex: 1; padding: 8px 7px; }
+  .summary-primary { grid-template-columns: repeat(2,minmax(0,1fr)); }
+  .summary-primary > .metric-current { grid-column: span 2; }
+  .summary-secondary { grid-template-columns: repeat(3,minmax(0,1fr)); }
+  .legend { white-space: normal; }
+}
+@media (max-width: 540px) {
+  .summary-primary > div:first-child { grid-column: span 2; }
+  .summary-secondary { grid-template-columns: repeat(2,minmax(0,1fr)); }
+  .summary-secondary > div:first-child { grid-column: auto; }
+  .summary-card { padding: 18px; }
+  .chart-wrap { height: 165px; }
+  .chart-footer { align-items: flex-start; flex-direction: column; }
+  .target-heading-actions { width: 100%; justify-content: space-between; }
+  .history-content { padding: 0 9px 9px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .disclosure > summary::after { transition: none; }
+}
